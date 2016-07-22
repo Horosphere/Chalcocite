@@ -1,0 +1,10 @@
+#ifndef CHALCOCITE__CHALCOCITE_H_
+#define CHALCOCITE__CHALCOCITE_H_
+
+enum
+{
+	STATE_NORMAL,
+	STATE_QUIT	
+} state;
+
+#endif // !CHALCOCITE__CHALCOCITE_H_

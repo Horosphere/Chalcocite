@@ -1,0 +1,11 @@
+# Hidden files
+.*
+!/.gitignore
+!/.formatGen
+
+# Directories
+bin
+build
+
+# Special
+makescript
