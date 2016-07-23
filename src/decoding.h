@@ -25,7 +25,7 @@ struct PacketQueue_CodecContext
 void PacketQueue_init(PacketQueue* pq);
 bool PacketQueue_put(PacketQueue* pq, AVPacket* packet);
 static int PacketQueue_get(PacketQueue* pq, AVPacket* packet, int block);
-int audio_decode_frame(struct PacketQueue_CodecContext* codecContext,
+int audio_decode_frame(struct PacketQueue_CodecContext* userdata,
 		uint8_t* ab, size_t size);
 void audio_callback(void* userdata, uint8_t* stream, int len);
 

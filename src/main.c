@@ -1,6 +1,8 @@
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
+#include <readline/readline.h>
 #include <SDL/SDL.h>
 #include <SDL/SDL_thread.h>
 #include <libavcodec/avcodec.h>
@@ -47,15 +49,16 @@ bool test(char const* fileName)
 		fprintf(stderr, "Could not find stream");
 		goto fail1;
 	}
-	// debugging
+	// Writes the format information to the console
 	av_dump_format(formatContext, 0, fileName, 0);
 
 
-	// Find first video stream
+	// Select audio and video stream
 	size_t streamIndexVideo = -1;
 	size_t streamIndexAudio = -1;
 	for (size_t i = 0; i < formatContext->nb_streams; ++i)
 	{
+		// Select *first* video and audio stream
 		enum AVMediaType codecType = formatContext->streams[i]->codec->codec_type;
 		if (streamIndexVideo == (size_t) -1 && codecType == AVMEDIA_TYPE_VIDEO)
 			streamIndexVideo = i;
@@ -70,6 +73,8 @@ bool test(char const* fileName)
 		fprintf(stderr, "Unable to find video stream");
 		goto fail1;
 	}
+
+	// Find audio and video decoders
 	AVCodecContext* codecContextVideo =
 	  formatContext->streams[streamIndexVideo]->codec;
 	AVCodec* codecVideo = avcodec_find_decoder(codecContextVideo->codec_id);
@@ -103,6 +108,10 @@ bool test(char const* fileName)
 		fprintf(stderr, "Could not open codec");
 		goto fail3;
 	}
+	/*
+	 * Allocate frames for decoding.
+	 * frameRGB is only used to store the video output.
+	 */
 	int const ALIGN = 32;
 	int nBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24,
 	                                      codecContextVideo->width,
@@ -125,6 +134,11 @@ bool test(char const* fileName)
 	                     AV_PIX_FMT_RGB24, codecContextVideo->width,
 	                     codecContextVideo->height, ALIGN);
 
+	struct SwsContext* swsContext =
+	  sws_getContext(codecContextVideo->width, codecContextVideo->height,
+	                 codecContextVideo->pix_fmt, codecContextVideo->width,
+	                 codecContextVideo->height, AV_PIX_FMT_YUV420P, SWS_BILINEAR,
+	                 NULL, NULL, NULL);
 
 	// SDL Video handling
 	SDL_Surface* screen = SDL_SetVideoMode(codecContextVideo->width,
@@ -136,11 +150,6 @@ bool test(char const* fileName)
 	}
 	SDL_Overlay* overlayYUV = SDL_CreateYUVOverlay(codecContextVideo->width,
 	                          codecContextVideo->height, SDL_YV12_OVERLAY, screen);
-	struct SwsContext* swsContext =
-	  sws_getContext(codecContextVideo->width, codecContextVideo->height,
-	                 codecContextVideo->pix_fmt, codecContextVideo->width,
-	                 codecContextVideo->height, AV_PIX_FMT_YUV420P, SWS_BILINEAR,
-	                 NULL, NULL, NULL);
 
 	// SDL Audio handling
 	SDL_AudioSpec audioSpec;
@@ -174,12 +183,15 @@ bool test(char const* fileName)
 			if (frameFinished)
 			{
 				SDL_LockYUVOverlay(overlayYUV);
+				/*
+				 * The indices here must be altered
+				 */
 				frameRGB->data[0] = overlayYUV->pixels[0];
 				frameRGB->data[1] = overlayYUV->pixels[2];
 				frameRGB->data[2] = overlayYUV->pixels[1];
 				frameRGB->linesize[0] = overlayYUV->pitches[0];
-				frameRGB->linesize[1] = overlayYUV->pitches[2]; // Index intentially
-				frameRGB->linesize[2] = overlayYUV->pitches[1]; // altered
+				frameRGB->linesize[1] = overlayYUV->pitches[2]; 
+				frameRGB->linesize[2] = overlayYUV->pitches[1];
 				sws_scale(swsContext, (uint8_t const* const*) frame->data, frame->linesize, 0,
 				          codecContextVideo->height, frameRGB->data, frameRGB->linesize);
 				SDL_UnlockYUVOverlay(overlayYUV);
@@ -241,7 +253,43 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
-	bool flag = test(argv[1]);
+	if (argc > 1)
+	{
+		bool flag = test(argv[1]);
+		return flag ? 0 : -1;
+	}
 
-	return flag ? 0 : -1;
+	while (true)
+	{
+		char* line = readline("(chal) ");
+		if (!line || line[0] == '\0')
+		{
+			printf("Error: Empty command\n");
+			continue;
+		}
+		// Use strtok to split the line into tokens
+		char const* token = strtok(line, " ");
+		if (strcmp(token, "quit") == 0)
+		{
+			if (strtok(NULL, " "))
+				printf("Type 'quit' to quit\n");
+			else
+				break;
+		}
+		else if (strcmp(token, "test") == 0)
+		{
+			token = strtok(NULL, " ");
+			if (!token)
+				printf("Please supply an argument\n");
+			test(token);
+		}
+		else
+		{
+			printf("Error: Unknown command\n");
+			continue;
+		}
+		free(line);
+	}
+
+	return 0;
 }

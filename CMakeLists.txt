@@ -21,3 +21,4 @@ set(SOURCE_FILES
 add_executable(Chalcocite ${SOURCE_FILES})
 target_link_libraries(Chalcocite avcodec avformat avutil swscale)
 target_link_libraries(Chalcocite SDL)
+target_link_libraries(Chalcocite readline)
