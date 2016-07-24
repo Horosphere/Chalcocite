@@ -152,22 +152,22 @@ bool test(char const* fileName)
 	                          codecContextVideo->height, SDL_YV12_OVERLAY, screen);
 
 	// SDL Audio handling
-	SDL_AudioSpec audioSpec;
-	audioSpec.freq = codecContextAudio->sample_rate;
-	audioSpec.format = AUDIO_S16SYS;
-	audioSpec.channels = codecContextAudio->channels;
-	audioSpec.silence = 0;
-	audioSpec.samples = 512; // = SDL_AUDIO_MIN_BUFFER_SIZE in ffplay.c
-	audioSpec.callback = (void (*)(void*, uint8_t*, int)) audio_callback;
+	SDL_AudioSpec audioSpecTarget;
+	audioSpecTarget.freq = codecContextAudio->sample_rate;
+	audioSpecTarget.format = AUDIO_S16SYS;
+	audioSpecTarget.channels = codecContextAudio->channels;
+	audioSpecTarget.silence = 0;
+	audioSpecTarget.samples = 512; // = SDL_AUDIO_MIN_BUFFER_SIZE in ffplay.c
+	audioSpecTarget.callback = (void (*)(void*, uint8_t*, int)) audio_callback;
 	struct PacketQueue_CodecContext userdata =
 		{ .codecContext = codecContextAudio };
-	audioSpec.userdata = &userdata;
+	audioSpecTarget.userdata = &userdata;
 
 	state = STATE_NORMAL;
 	PacketQueue_init(&userdata.pq);
 	AVPacket packet;
-	SDL_AudioSpec specTemp;
-	if (SDL_OpenAudio(&audioSpec, &specTemp) < 0)
+	SDL_AudioSpec audioSpec;
+	if (SDL_OpenAudio(&audioSpecTarget, &audioSpec) < 0)
 	{
 		fprintf(stderr, "[SDL] %s\n", SDL_GetError());
 		goto fail6;

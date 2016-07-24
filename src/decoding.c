@@ -33,7 +33,7 @@ bool PacketQueue_put(PacketQueue* pq, AVPacket* packet)
 	SDL_UnlockMutex(pq->mutex);
 	return true;
 }
-int PacketQueue_get(PacketQueue* pq, AVPacket* packet, int block)
+int PacketQueue_get(PacketQueue* pq, AVPacket* packet, bool block)
 {
 	SDL_LockMutex(pq->mutex);
 	AVPacketList* pl;
@@ -68,8 +68,8 @@ int PacketQueue_get(PacketQueue* pq, AVPacket* packet, int block)
 	return result;
 }
 
-int audio_decode_frame(struct PacketQueue_CodecContext* userdata, uint8_t* buffer,
-                       size_t bufferSize)
+int audio_decode_frame(struct PacketQueue_CodecContext* userdata,
+                       uint8_t* buffer, size_t bufferSize)
 {
 	(void) bufferSize;
 
@@ -79,7 +79,7 @@ int audio_decode_frame(struct PacketQueue_CodecContext* userdata, uint8_t* buffe
 	static AVFrame frame;
 
 	AVCodecContext* cc = userdata->codecContext;
-	while (true)
+	while (true) // This loop never ends
 	{
 		while (audioPacketData > 0)
 		{
@@ -95,22 +95,20 @@ int audio_decode_frame(struct PacketQueue_CodecContext* userdata, uint8_t* buffe
 			int dataSize = 0;
 			if (gotFrame)
 			{
-				dataSize = av_samples_get_buffer_size(NULL, cc->channels, 
-						frame.nb_samples,
-						cc->sample_fmt, 1);
+				dataSize = av_samples_get_buffer_size(NULL, cc->channels,
+				                                      frame.nb_samples,
+				                                      cc->sample_fmt, 1);
 				assert(dataSize <= bufferSize);
 				memcpy(buffer, frame.data[0], dataSize);
 			}
-			if (dataSize <= 0) continue; // No data yet
-			return dataSize;
+			if (dataSize > 0) return dataSize; // Got data
 		}
 		if (packet.data) av_packet_unref(&packet);
 		if (state == STATE_QUIT) return -1;
-		if (PacketQueue_get(&userdata->pq, &packet, 1) < 0) return -1;
+		if (PacketQueue_get(&userdata->pq, &packet, true) < 0) return -1;
 		audioPacketData = packet.data;
 		audioPacketSize = packet.size;
 	}
-	return 0;
 }
 void audio_callback(void* userdata, uint8_t* stream, int len)
 {
@@ -118,11 +116,11 @@ void audio_callback(void* userdata, uint8_t* stream, int len)
 	static uint32_t audioBufferSize = 0;
 	static uint32_t audioBufferIndex = 0;
 
-	while (len > 0)
+	while (len > 0) // Send samples until len is depleted.
 	{
 		if (audioBufferIndex >= audioBufferSize)
 		{
-			// All data sent
+			// All data has been sent. Obtain more
 			int audioSize = audio_decode_frame(userdata, audioBuffer,
 			                                   sizeof(audioBuffer));
 			if (audioSize < 0) // Error
@@ -135,8 +133,8 @@ void audio_callback(void* userdata, uint8_t* stream, int len)
 				audioBufferSize = audioSize;
 			audioBufferIndex = 0;
 		}
-		int l = audioBufferSize - audioBufferIndex;
-		if (l > len) l = len;
+		int l = audioBufferSize - audioBufferIndex; // Avaliable samples
+		if (l > len) l = len; // If this condition holds, the loop will exit.
 		memcpy(stream, (uint8_t*)audioBuffer + audioBufferIndex, l);
 		len -= l;
 		stream += l;

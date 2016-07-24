@@ -7,26 +7,18 @@
 #include <libavformat/avformat.h>
 
 #include "chalcocite.h"
+#include "packetqueue.h"
 
-typedef struct
-{
-	AVPacketList* first;
-	AVPacketList* last;
-	int nPackets;
-	int size;
-	SDL_mutex* mutex;
-	SDL_cond* cond;
-} PacketQueue;
 struct PacketQueue_CodecContext
 {
 	PacketQueue pq;
 	AVCodecContext* codecContext;
 };
-void PacketQueue_init(PacketQueue* pq);
-bool PacketQueue_put(PacketQueue* pq, AVPacket* packet);
-static int PacketQueue_get(PacketQueue* pq, AVPacket* packet, int block);
 int audio_decode_frame(struct PacketQueue_CodecContext* userdata,
 		uint8_t* ab, size_t size);
+/**
+ * @brief Callback function supplied to SDL_AudioSpec to decode audio
+ */
 void audio_callback(void* userdata, uint8_t* stream, int len);
 
 // Implementations

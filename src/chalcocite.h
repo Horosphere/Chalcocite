@@ -1,7 +1,7 @@
 #ifndef CHALCOCITE__CHALCOCITE_H_
 #define CHALCOCITE__CHALCOCITE_H_
 
-enum
+_Atomic enum
 {
 	STATE_NORMAL,
 	STATE_QUIT	
