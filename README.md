@@ -1,8 +1,6 @@
 # Chalcocite
 
-Command line video/audio player using FFmpeg.
-Chalcocite is written with the help of this
-[tutorial](http://dranger.com/ffmpeg/ffmpeg.html).
+Command line video/audio player using FFmpeg based on FFplay.
 
 ## Usage
 
@@ -20,7 +18,7 @@ $ Chalcocite
 
 ## Building
 
-Chalcocite depends on SDL, FFmpeg, and GNU Readline. It is recommended to do an
+Chalcocite depends on SDL2, FFmpeg, and GNU Readline. It is recommended to do an
 out-of-source build. Execute
 ```
 make build

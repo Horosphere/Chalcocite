@@ -2,11 +2,16 @@
 
 #include "chalcocite.h"
 
-inline void PacketQueue_init(PacketQueue* pq)
+inline void PacketQueue_init(PacketQueue* const pq)
 {
 	memset(pq, 0, sizeof(PacketQueue));
 	pq->mutex = SDL_CreateMutex();
 	pq->cond = SDL_CreateCond();
+}
+inline void PacketQueue_destroy(PacketQueue* const pq)
+{
+	SDL_DestroyMutex(pq->mutex);
+	SDL_DestroyCond(pq->cond);
 }
 bool PacketQueue_put(PacketQueue* pq, AVPacket* packet)
 {

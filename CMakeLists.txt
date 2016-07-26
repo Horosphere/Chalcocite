@@ -12,7 +12,8 @@ set (CMAKE_C_STANDARD 11)
 
 # Auto-generated. Do not edit. All changes will be undone
 set(SOURCE_FILES
-    ${PROJECT_SOURCE_DIR}/decoding.c
+    ${PROJECT_SOURCE_DIR}/media.c
+    ${PROJECT_SOURCE_DIR}/packetqueue.c
     ${PROJECT_SOURCE_DIR}/main.c
    )
 # Auto-generated end
@@ -20,5 +21,5 @@ set(SOURCE_FILES
 
 add_executable(Chalcocite ${SOURCE_FILES})
 target_link_libraries(Chalcocite avcodec avformat avutil swscale)
-target_link_libraries(Chalcocite SDL)
+target_link_libraries(Chalcocite SDL2)
 target_link_libraries(Chalcocite readline)
