@@ -9,6 +9,7 @@ struct VideoPicture
 {
 	SDL_Texture* texture;
 	int width, height; // Source
+
 	bool allocated;
 };
 

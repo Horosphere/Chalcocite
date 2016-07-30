@@ -38,14 +38,15 @@ bool PacketQueue_put(PacketQueue* pq, AVPacket* packet)
 	SDL_UnlockMutex(pq->mutex);
 	return true;
 }
-int PacketQueue_get(PacketQueue* pq, AVPacket* packet, bool block)
+int PacketQueue_get(PacketQueue* pq, AVPacket* packet, bool block,
+		_Atomic enum State const* const state)
 {
 	SDL_LockMutex(pq->mutex);
 	AVPacketList* pl;
 	int result;
 	while (true)
 	{
-		if (state == STATE_QUIT)
+		if (*state == STATE_QUIT)
 		{
 			result = -1;
 			break;

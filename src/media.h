@@ -19,8 +19,8 @@ struct Media
 {
 	AVFormatContext* formatContext;
 
-	unsigned streamIndexA;
-	AVStream* streamA;
+	unsigned streamIndexA; // = CHAL_UNSIGNED_INVALID if no audio
+	AVStream* streamA; // = NULL if no audio
 	AVCodecContext* ccA; ///< Audio codec context
 	PacketQueue queueA;
 	uint8_t audioBuffer[AUDIO_BUFFER_MAX_SIZE];
@@ -31,18 +31,15 @@ struct Media
 	size_t audioPacketSize;
 	AVFrame audioFrame;
 
-	unsigned streamIndexV;
-	AVStream* streamV;
+	unsigned streamIndexV; // = CHAL_UNSIGNED_INVALID if no video
+	AVStream* streamV; // = NULL if no video
 	AVCodecContext* ccV; ///< Video codec context
 	PacketQueue queueV;
 
 	struct SwsContext* swsContext;
-
-	// Emits signal when loading is complete
-	SDL_cond* stageCond;
-	SDL_mutex* stageMutex;
-
+	int outWidth, outHeight;
 	struct VideoPicture pictQueue[PICTQUEUE_SIZE];
+	// Number of pictures in use, reading index, writing index
 	int pictQueueSize, pictQueueIndexR, pictQueueIndexW;
 	SDL_mutex* pictQueueMutex;
 	SDL_cond* pictQueueCond;
@@ -63,11 +60,24 @@ void Media_init(struct Media* const);
 void Media_destroy(struct Media* const);
 
 /**
- * Media must be pre-allocated and formatContext must be filled.
- * @return The stream type if successful. Otherwise AVMEDIA_TYPE_NB
+ * @brief Allocate media->pictQueue[pictQueueIndexW] with YV12 pixel format
+ *	and dimensions matching media->outWidth * media->outHeight
+ * @warning renderer, outWidth, outHeight must be valid.
  */
-enum AVMediaType Media_open_stream(struct Media* const, unsigned streamIndex);
-bool Media_queue_picture(struct Media* const);
-bool load_SDL(struct Media* const);
+bool Media_queue_picture(struct Media* const media);
+
+/**
+ * @brief Extracts and copies codec context of given stream. Guarenteed to
+ *	clean up upon failure.
+ * @param[in] fc An opened AVFormatContext that has stream info. That is,
+ *	avformat_find_stream_info(fc, NULL) >= 0
+ * @param[in] streamIndex Index of the stream in the format context. Must be
+ *	less than fc->nb_streams
+ * @param[out] cc Output to store the copied AVCodecContext. Must be
+ *	dereferencible.
+ * @return true if successful.
+ */
+bool av_stream_context(AVFormatContext* const fc, unsigned streamIndex,
+		AVCodecContext** const cc);
 
 #endif // !CHALCOCITE__MEDIA_H_

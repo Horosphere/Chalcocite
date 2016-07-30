@@ -15,6 +15,7 @@ set(SOURCE_FILES
     ${PROJECT_SOURCE_DIR}/media.c
     ${PROJECT_SOURCE_DIR}/packetqueue.c
     ${PROJECT_SOURCE_DIR}/main.c
+    ${PROJECT_SOURCE_DIR}/audio.c
    )
 # Auto-generated end
 
