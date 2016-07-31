@@ -45,12 +45,21 @@ static void video_refresh_timer(struct Media* const media)
 
 			// Show picture
 			struct VideoPicture* vp = &media->pictQueue[media->pictQueueIndexR];
-			if (!vp->texture) return;
+			assert(vp->texture &&
+					vp->planeY && vp->planeU && vp->planeV);
 
+			SDL_Rect rect;
+			rect.x = rect.y = 0;
+			rect.w = vp->width;
+			rect.h = vp->height;
 			SDL_LockMutex(media->screenMutex);
-			//SDL_SetRenderDrawColor(media->renderer, 255, 0, 0, 255);
+			SDL_UpdateYUVTexture(vp->texture, NULL,
+			                     vp->planeY, vp->width,
+			                     vp->planeU, vp->width / 2,
+			                     vp->planeV, vp->width / 2);
+			//SDL_SetRenderDrawColor(media->renderer, 255, 127, 255, 255);
 			SDL_RenderClear(media->renderer);
-			SDL_RenderCopy(media->renderer, vp->texture, NULL, NULL);
+			SDL_RenderCopy(media->renderer, vp->texture, NULL, &rect);
 			SDL_RenderPresent(media->renderer);
 			SDL_UnlockMutex(media->screenMutex);
 
@@ -77,12 +86,6 @@ static int video_thread(struct Media* const media)
 	}
 
 	// Allocate YV12 pixel array
-	size_t planeSizeY = media->outWidth * media->outHeight;
-	size_t planeSizeUV = planeSizeY / 4;
-	uint8_t planeY[planeSizeY];
-	uint8_t planeU[planeSizeUV];
-	uint8_t planeV[planeSizeUV];
-
 	size_t pitchUV = media->outWidth / 2;
 
 	while (true)
@@ -97,10 +100,11 @@ static int video_thread(struct Media* const media)
 
 		if (finished)
 		{
-			if (!Media_queue_picture(media)) break;
-			frameRGB->data[0] = planeY;
-			frameRGB->data[1] = planeU;
-			frameRGB->data[2] = planeV;
+			if (!Media_pictQueue_wait_write(media)) break;
+			struct VideoPicture* vp = &media->pictQueue[media->pictQueueIndexW];
+			frameRGB->data[0] = vp->planeY;
+			frameRGB->data[1] = vp->planeU;
+			frameRGB->data[2] = vp->planeV;
 			frameRGB->linesize[0] = media->outWidth;
 			frameRGB->linesize[1] = pitchUV;
 			frameRGB->linesize[2] = pitchUV;
@@ -108,9 +112,6 @@ static int video_thread(struct Media* const media)
 			sws_scale(media->swsContext, (uint8_t const* const*) frame->data,
 			          frame->linesize, 0, media->ccV->height,
 			          frameRGB->data, frameRGB->linesize);
-			struct VideoPicture* vp = &media->pictQueue[media->pictQueueIndexW];
-			SDL_UpdateYUVTexture(vp->texture, NULL, planeY, media->outWidth,
-			                     planeU, pitchUV, planeV, pitchUV);
 
 			// Move picture queue writing index
 			if (++media->pictQueueIndexW == PICTQUEUE_SIZE)
@@ -244,6 +245,7 @@ void test(char const* fileName)
 			}
 
 			media->streamV = media->formatContext->streams[i];
+			Media_pictQueue_init(media);
 			media->threadVideo = SDL_CreateThread((int (*)(void*)) video_thread,
 			                                      "video", media);
 			break;
@@ -280,6 +282,7 @@ void test(char const* fileName)
 	}
 
 fail2:
+	if (media->streamV) Media_pictQueue_destroy(media);
 	SDL_DestroyRenderer(media->renderer);
 	SDL_DestroyWindow(media->screen);
 	avcodec_close(media->ccA);

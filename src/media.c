@@ -17,53 +17,60 @@ void Media_init(struct Media* const media)
 void Media_destroy(struct Media* const media)
 {
 	if (!media) return;
-	for (size_t i = 0; i < PICTQUEUE_SIZE; ++i)
-		if (media->pictQueue[i].allocated)
-			SDL_DestroyTexture(media->pictQueue[i].texture);
 	SDL_DestroyMutex(media->pictQueueMutex);
 	SDL_DestroyCond(media->pictQueueCond);
 	SDL_DestroyMutex(media->screenMutex);
 	PacketQueue_destroy(&media->queueA);
 	PacketQueue_destroy(&media->queueV);
 }
-
-bool Media_queue_picture(struct Media* const media)
+bool Media_pictQueue_init(struct Media* const media)
 {
-	// Wait for space in pictQueue
+	for (size_t i = 0; i < PICTQUEUE_SIZE; ++i)
+	{
+		struct VideoPicture* const vp = &media->pictQueue[i];
+		vp->width = media->outWidth;
+		vp->height = media->outHeight;
+		vp->texture = SDL_CreateTexture(media->renderer,
+		                                SDL_PIXELFORMAT_YV12,
+		                                SDL_TEXTUREACCESS_STREAMING,
+		                                vp->width, vp->height);
+		if (!vp->texture) goto fail;
+		size_t planeSizeY = vp->width * vp->height;
+		size_t planeSizeUV = planeSizeY / 4;
+		vp->planeY = malloc(sizeof(*vp->planeY) * planeSizeY);
+		vp->planeU = malloc(sizeof(*vp->planeU) * planeSizeUV);
+		vp->planeV = malloc(sizeof(*vp->planeV) * planeSizeUV);
+		if (!vp->planeY || !vp->planeU || !vp->planeV) goto fail;
+	}
+	return true;
+fail:
+	Media_pictQueue_destroy(media);
+	return false;
+}
+void Media_pictQueue_destroy(struct Media* const media)
+{
+	for (size_t i = 0; i < PICTQUEUE_SIZE; ++i)
+	{
+		struct VideoPicture* const vp = &media->pictQueue[i];
+		SDL_DestroyTexture(vp->texture);
+		free(vp->planeY);
+		free(vp->planeU);
+		free(vp->planeV);
+	}
+}
+bool Media_pictQueue_wait_write(struct Media* const media)
+{
 	SDL_LockMutex(media->pictQueueMutex);
 	while (media->pictQueueSize >= PICTQUEUE_SIZE && media->state != STATE_QUIT)
 		SDL_CondWait(media->pictQueueCond, media->pictQueueMutex);
 	SDL_UnlockMutex(media->pictQueueMutex);
 
 	if (media->state == STATE_QUIT) return false;
-	struct VideoPicture* vp = &media->pictQueue[media->pictQueueIndexW];
-	if (!vp->texture ||
-			vp->width != media->ccV->width ||
-			vp->height != media->ccV->height)
-	{
-
-		// Allocate video picture
-		if (vp->texture)
-			SDL_DestroyTexture(vp->texture);
-		SDL_LockMutex(media->screenMutex);
-		// Update
-		vp->texture = SDL_CreateTexture(media->renderer,
-				SDL_PIXELFORMAT_YV12, SDL_TEXTUREACCESS_STREAMING,
-				media->outWidth, media->outHeight);
-		SDL_UnlockMutex(media->screenMutex);
-		vp->width = media->outWidth;
-		vp->height = media->outHeight;
-		vp->allocated = true;
-		if (media->state == STATE_QUIT)
-		{
-			return false;
-		}
-	}
 	return true;
 }
 
 bool av_stream_context(AVFormatContext* const fc, unsigned streamIndex,
-		AVCodecContext** const cc)
+                       AVCodecContext** const cc)
 {
 	assert(streamIndex < fc->nb_streams);
 

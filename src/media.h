@@ -60,12 +60,19 @@ void Media_init(struct Media* const);
 void Media_destroy(struct Media* const);
 
 /**
- * @brief Allocate media->pictQueue[pictQueueIndexW] with YV12 pixel format
- *	and dimensions matching media->outWidth * media->outHeight
- * @warning renderer, outWidth, outHeight must be valid.
+ * @warning Uses SDl Render API (Not thread safe). User responsible for locking
+ *	mutexes.
+ * @brief Allocate components of the picture queue with dimensions outWidth *
+ *	outHeight. The format for textures is YV12.
  */
-bool Media_queue_picture(struct Media* const media);
+bool Media_pictQueue_init(struct Media* const);
+/**
+ * @warning Uses SDl Render API (Not thread safe). User responsible for locking
+ *	mutexes.
+ */
+void Media_pictQueue_destroy(struct Media* const);
 
+bool Media_pictQueue_wait_write(struct Media* const);
 /**
  * @brief Extracts and copies codec context of given stream. Guarenteed to
  *	clean up upon failure.

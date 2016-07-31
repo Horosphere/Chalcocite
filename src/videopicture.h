@@ -7,10 +7,16 @@
 
 struct VideoPicture
 {
+	/*
+	 * The SDL Render API can only be called from one thread. That includes any
+	 * allocation/destruction of textures.
+	 */
 	SDL_Texture* texture;
 	int width, height; // Source
-
-	bool allocated;
+	// Must be allocated with texture
+	uint8_t* planeY;
+	uint8_t* planeU;
+	uint8_t* planeV;
 };
 
 SDL_mutex* screenMutex;
