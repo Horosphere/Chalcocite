@@ -157,9 +157,15 @@ static int decode_thread(struct Media* const media)
 		}
 		// Stream switch
 		if (packet.stream_index == (int) media->streamIndexV)
-			PacketQueue_put(&media->queueV, &packet);
+		{
+			if (media->streamV)
+				PacketQueue_put(&media->queueV, &packet);
+		}
 		else if (packet.stream_index == (int) media->streamIndexA)
-			PacketQueue_put(&media->queueA, &packet);
+		{
+			if (media->streamA)
+				PacketQueue_put(&media->queueA, &packet);
+		}
 		else
 			av_packet_unref(&packet);
 	}
@@ -296,162 +302,6 @@ fail0:
 	return;
 }
 
-static int dt(struct Media* const media)
-{
-	AVFrame* frame = av_frame_alloc();
-	AVFrame* frameRGB = av_frame_alloc();
-	SDL_Renderer* renderer = media->renderer;
-
-	SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_YV12,
-	                       SDL_TEXTUREACCESS_STREAMING, media->ccV->width, media->ccV->height);
-	size_t planeSizeY = media->ccV->width * media->ccV->height;
-	size_t planeSizeUV = planeSizeY / 4;
-	size_t pitchUV = media->ccV->width / 2;
-	uint8_t* planeY = malloc(sizeof(uint8_t) * planeSizeY);
-	uint8_t* planeU = malloc(sizeof(uint8_t) * planeSizeUV);
-	uint8_t* planeV = malloc(sizeof(uint8_t) * planeSizeUV);
-	AVPacket packet;
-	while (av_read_frame(media->formatContext, &packet) >= 0)
-	{
-		if (packet.stream_index == (int) media->streamIndexV)
-		{
-			int finished;
-			avcodec_decode_video2(media->ccV, frame, &finished, &packet);
-			if (finished)
-			{
-				frameRGB->data[0] = planeY;
-				frameRGB->data[1] = planeU;
-				frameRGB->data[2] = planeV;
-				frameRGB->linesize[0] = media->ccV->width; // Pitch Y
-				frameRGB->linesize[1] = pitchUV;
-				frameRGB->linesize[2] = pitchUV;
-				sws_scale(media->swsContext, (uint8_t const* const*) frame->data,
-				          frame->linesize, 0, media->ccV->height, frameRGB->data,
-				          frameRGB->linesize);
-				SDL_UpdateYUVTexture(texture, NULL,
-				                     planeY, media->ccV->width,
-				                     planeU, pitchUV,
-				                     planeV, pitchUV);
-				SDL_RenderClear(renderer);
-				SDL_RenderCopy(renderer, texture, NULL, NULL);
-				SDL_RenderPresent(renderer);
-				av_packet_unref(&packet);
-			}
-		}
-		else if (packet.stream_index == (int) media->streamIndexA)
-		{
-			PacketQueue_put(&media->queueA, &packet);
-		}
-		else av_packet_unref(&packet);
-	}
-	SDL_Event event;
-	event.type = CHAL_EVENT_QUIT;
-	event.user.data1 = media;
-	SDL_PushEvent(&event);
-
-	free(planeY);
-	free(planeU);
-	free(planeV);
-	av_frame_free(&frameRGB);
-	av_frame_free(&frame);
-	return 0;
-}
-void test2(char const* fileName)
-{
-	struct Media* media = av_malloc(sizeof(struct Media));
-	if (!media)
-	{
-		fprintf(stderr, "Could not allocate media\n");
-		goto fail0;
-	}
-	Media_init(media);
-	strncpy(media->fileName, fileName, sizeof(media->fileName));
-	media->state = STATE_NORMAL;
-
-	// Init various components
-	if (avformat_open_input(&media->formatContext, media->fileName, NULL, NULL))
-	{
-		goto fail1;
-	}
-	if (avformat_find_stream_info(media->formatContext, NULL) < 0)
-	{
-		goto fail2;
-	}
-	av_dump_format(media->formatContext, 0, media->fileName, 0);
-	for (unsigned i = 0; i < media->formatContext->nb_streams; ++i)
-		if (media->formatContext->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO)
-		{
-			if (!av_stream_context(media->formatContext, i, &media->ccA)) break;
-			media->streamIndexA = i;
-			media->streamA = media->formatContext->streams[i];
-			media->audioBufferSize = media->audioBufferIndex = 0;
-			PacketQueue_init(&media->queueA);
-			audio_load_SDL(media);
-			break;
-		}
-	for (unsigned i = 0; i < media->formatContext->nb_streams; ++i)
-		if (media->formatContext->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO)
-		{
-			if (!av_stream_context(media->formatContext, i, &media->ccV)) break;
-
-			// TODO: Allow the window to be resized
-			media->outWidth = media->ccV->width;
-			media->outHeight = media->ccV->height;
-			media->swsContext = sws_getContext(media->ccV->width, media->ccV->height,
-			                                   media->ccV->pix_fmt,
-			                                   media->outWidth, media->outHeight,
-			                                   AV_PIX_FMT_YUV420P, SWS_BILINEAR,
-			                                   NULL, NULL, NULL);
-			media->screen = SDL_CreateWindow(media->fileName, SDL_WINDOWPOS_UNDEFINED,
-			                                 SDL_WINDOWPOS_UNDEFINED,
-			                                 media->outWidth, media->outHeight, 0);
-			if (!media->screen)
-			{
-				fprintf(stderr, "[SDL] %s\n", SDL_GetError());
-				break;
-			}
-			media->renderer = SDL_CreateRenderer(media->screen, -1, 0);
-			if (!media->renderer)
-			{
-				fprintf(stderr, "[SDL] %s\n", SDL_GetError());
-				SDL_DestroyWindow(media->screen);
-				media->screen = NULL;
-				break;
-			}
-			media->streamIndexV = i;
-			media->streamV = media->formatContext->streams[i];
-			PacketQueue_init(&media->queueV);
-			break;
-		}
-	media->threadParse = SDL_CreateThread((int (*)(void*)) dt, "decode",
-	                                      media);
-	while (true)
-	{
-		SDL_Event event;
-		SDL_PollEvent(&event);
-		switch (event.type)
-		{
-		case SDL_QUIT:
-			media->state = STATE_QUIT;
-			SDL_Quit();
-			goto fail3;
-			break;
-		default:
-			break;
-		}
-	}
-
-fail3:
-	avcodec_free_context(&media->ccA);
-	avcodec_free_context(&media->ccV);
-fail2:
-	avformat_close_input(&media->formatContext);
-fail1:
-	Media_destroy(media);
-	av_free(media);
-fail0:
-	return;
-}
 int main(int argc, char* argv[])
 {
 	(void) argc;
