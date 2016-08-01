@@ -5,6 +5,7 @@
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
 #include <libavutil/imgutils.h>
+#include <libswresample/swresample.h>
 
 #include "packetqueue.h"
 #include "chalcocite.h"
@@ -15,14 +16,23 @@
 #define VIDEO_QUEUE_MAX_SIZE (5 * 256 * 1024)
 #define PICTQUEUE_SIZE 1
 
+/**
+ * Must be initialised with \ref Media_init and destroyed by \red Media_destroy
+ * @brief Media represents a collection of playable audio/video streams.
+ */
 struct Media
 {
+	char fileName[1024]; ///< Path to the media file
+	_Atomic enum State state; ///< Playback state
 	AVFormatContext* formatContext;
 
-	unsigned streamIndexA; // = CHAL_UNSIGNED_INVALID if no audio
-	AVStream* streamA; // = NULL if no audio
+	unsigned streamIndexA;
+	AVStream* streamA; ///< streamA is NULL if no audio
 	AVCodecContext* ccA; ///< Audio codec context
-	PacketQueue queueA;
+	PacketQueue queueA; ///< Packet queue to store audio packets.
+	/*
+	 * The following are used by audio.h functions
+	 */
 	uint8_t audioBuffer[AUDIO_BUFFER_MAX_SIZE];
 	size_t audioBufferSize;
 	size_t audioBufferIndex;
@@ -31,28 +41,33 @@ struct Media
 	size_t audioPacketSize;
 	AVFrame audioFrame;
 
-	unsigned streamIndexV; // = CHAL_UNSIGNED_INVALID if no video
+	struct SwrContext* swrContext; ///< Converts audio to SDL playable format
+
+	unsigned streamIndexV;
 	AVStream* streamV; // = NULL if no video
 	AVCodecContext* ccV; ///< Video codec context
 	PacketQueue queueV;
 
-	struct SwsContext* swsContext;
-	int outWidth, outHeight;
+	struct SwsContext* swsContext; ///< Converts video to SDL playable format
+	int outWidth, outHeight; ///< Dimension of the screen
+	/**
+	 * This queue is filled by Media_pictQueue_init. The indices pictQueueIndexR,
+	 *	pictQueueIndexW are for reading and writing from the queue, respectively.
+	 *	pictQueueSize represents the number of elements in use.
+	 * Lock pictQueueMutex when operating in the queue.
+	 */
 	struct VideoPicture pictQueue[PICTQUEUE_SIZE];
 	// Number of pictures in use, reading index, writing index
 	int pictQueueSize, pictQueueIndexR, pictQueueIndexW;
 	SDL_mutex* pictQueueMutex;
 	SDL_cond* pictQueueCond;
+	SDL_Window* screen;
+	SDL_Renderer* renderer;
+
 	
 	SDL_Thread* threadParse;
 	SDL_Thread* threadVideo;
 
-	SDL_Window* screen;
-	SDL_mutex* screenMutex;
-	SDL_Renderer* renderer;
-
-	char fileName[1024];
-	_Atomic enum State state;
 };
 
 

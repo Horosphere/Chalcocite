@@ -10,7 +10,6 @@ void Media_init(struct Media* const media)
 	media->streamIndexA = media->streamIndexV = CHAL_UNSIGNED_INVALID;
 	media->pictQueueMutex = SDL_CreateMutex();
 	media->pictQueueCond = SDL_CreateCond();
-	media->screenMutex = SDL_CreateMutex();
 	PacketQueue_init(&media->queueA);
 	PacketQueue_init(&media->queueV);
 }
@@ -19,7 +18,6 @@ void Media_destroy(struct Media* const media)
 	if (!media) return;
 	SDL_DestroyMutex(media->pictQueueMutex);
 	SDL_DestroyCond(media->pictQueueCond);
-	SDL_DestroyMutex(media->screenMutex);
 	PacketQueue_destroy(&media->queueA);
 	PacketQueue_destroy(&media->queueV);
 }

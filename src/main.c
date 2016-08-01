@@ -52,7 +52,6 @@ static void video_refresh_timer(struct Media* const media)
 			rect.x = rect.y = 0;
 			rect.w = vp->width;
 			rect.h = vp->height;
-			SDL_LockMutex(media->screenMutex);
 			SDL_UpdateYUVTexture(vp->texture, NULL,
 			                     vp->planeY, vp->width,
 			                     vp->planeU, vp->width / 2,
@@ -61,7 +60,6 @@ static void video_refresh_timer(struct Media* const media)
 			SDL_RenderClear(media->renderer);
 			SDL_RenderCopy(media->renderer, vp->texture, NULL, &rect);
 			SDL_RenderPresent(media->renderer);
-			SDL_UnlockMutex(media->screenMutex);
 
 			++media->pictQueueIndexR;
 			if (media->pictQueueIndexR == PICTQUEUE_SIZE)
@@ -291,6 +289,7 @@ fail2:
 	if (media->streamV) Media_pictQueue_destroy(media);
 	SDL_DestroyRenderer(media->renderer);
 	SDL_DestroyWindow(media->screen);
+	if (media->ccA) audio_unload_SDL(media);
 	avcodec_close(media->ccA);
 	avcodec_close(media->ccV);
 	avformat_close_input(&media->formatContext);

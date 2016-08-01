@@ -81,7 +81,7 @@ bool audio_load_SDL(struct Media* const media)
 	specTarget.format = AUDIO_S16SYS;
 	specTarget.channels = media->ccA->channels;
 	specTarget.silence = 0;
-	specTarget.samples = MAX(512, 2 << av_log2(specTarget.freq / 30));
+	specTarget.samples = 4096;
 	specTarget.callback = (void (*)(void*, uint8_t*, int)) audio_callback;
 	specTarget.userdata = media;
 
@@ -94,4 +94,9 @@ bool audio_load_SDL(struct Media* const media)
 
 	SDL_PauseAudio(0);
 	return true;
+}
+void audio_unload_SDL(struct Media* const media)
+{
+	(void) media;
+	SDL_CloseAudio();
 }

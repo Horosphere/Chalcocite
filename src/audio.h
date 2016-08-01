@@ -3,9 +3,10 @@
 
 #include "media.h"
 
-int audio_decode_frame(struct Media* media, uint8_t* buffer,
-                              size_t bufferSize);
-void audio_callback(struct Media* media, uint8_t* stream, int len);
+/**
+ * Load the given media into SDL
+ */
 bool audio_load_SDL(struct Media* const media);
+void audio_unload_SDL(struct Media* const media);
 
 #endif // !CHALCOCITE__AUDIO_H_
