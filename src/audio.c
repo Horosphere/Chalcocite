@@ -29,7 +29,10 @@ int audio_decode_frame(struct Media* media, uint8_t* buffer,
 				                                      media->audioFrame.nb_samples,
 				                                      media->ccA->sample_fmt, 1);
 				assert(dataSize <= bufferSize);
-				memcpy(buffer, media->audioFrame.data[0], dataSize);
+				swr_convert(media->swrContext, &buffer, AUDIO_BUFFER_MAX_SIZE,
+						(uint8_t const**) media->audioFrame.extended_data,
+						media->audioFrame.nb_samples);
+				//memcpy(buffer, media->audioFrame.data[0], dataSize);
 			}
 			if (dataSize > 0) return dataSize; // Got data
 		}
@@ -81,7 +84,7 @@ bool audio_load_SDL(struct Media* const media)
 	specTarget.format = AUDIO_S16SYS;
 	specTarget.channels = media->ccA->channels;
 	specTarget.silence = 0;
-	specTarget.samples = 4096;
+	specTarget.samples = 1024;
 	specTarget.callback = (void (*)(void*, uint8_t*, int)) audio_callback;
 	specTarget.userdata = media;
 
@@ -89,6 +92,15 @@ bool audio_load_SDL(struct Media* const media)
 	if (SDL_OpenAudio(&specTarget, &spec) < 0)
 	{
 		fprintf(stderr, "[SDL] %s\n", SDL_GetError());
+		return false;
+	}
+	media->swrContext = swr_alloc_set_opts(NULL,
+			av_get_default_channel_layout(spec.channels), AV_SAMPLE_FMT_S16, spec.freq,
+			media->ccA->channel_layout, media->ccA->sample_fmt, media->ccA->sample_rate,
+			0, NULL);
+	if (!media->swrContext || swr_init(media->swrContext) < 0)
+	{
+		fprintf(stderr, "Unable to allocate/Initialise Swr_Context\n");
 		return false;
 	}
 

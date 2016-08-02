@@ -20,6 +20,8 @@ void Media_destroy(struct Media* const media)
 	SDL_DestroyCond(media->pictQueueCond);
 	PacketQueue_destroy(&media->queueA);
 	PacketQueue_destroy(&media->queueV);
+	swr_free(&media->swrContext);
+	sws_freeContext(media->swsContext);
 }
 bool Media_pictQueue_init(struct Media* const media)
 {
