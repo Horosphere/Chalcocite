@@ -14,6 +14,7 @@
 
 #include "media.h"
 #include "audio.h"
+#include "test.h"
 
 static uint32_t refresh_timer_cb(uint32_t interval, void* data)
 {
@@ -34,7 +35,6 @@ static void schedule_refresh(struct Media* const media, int delay)
 }
 static void video_refresh_timer(struct Media* const media)
 {
-	(void) media;
 	if (media->streamV)
 	{
 		if (media->pictQueueSize == 0)
@@ -46,7 +46,7 @@ static void video_refresh_timer(struct Media* const media)
 			// Show picture
 			struct VideoPicture* vp = &media->pictQueue[media->pictQueueIndexR];
 			assert(vp->texture &&
-					vp->planeY && vp->planeU && vp->planeV);
+			       vp->planeY && vp->planeU && vp->planeV);
 
 			SDL_Rect rect;
 			rect.x = rect.y = 0;
@@ -183,88 +183,83 @@ static int decode_thread(struct Media* const media)
 }
 void play_file(char const* fileName)
 {
-	struct Media* media = av_malloc(sizeof(struct Media));
-	if (!media)
-	{
-		fprintf(stderr, "Could not allocate media\n");
-		goto fail0;
-	}
-	Media_init(media);
-	strncpy(media->fileName, fileName, sizeof(media->fileName));
-	media->state = STATE_NORMAL;
+	struct Media media;
+	Media_init(&media);
+	strncpy(media.fileName, fileName, sizeof(media.fileName));
+	media.state = STATE_NORMAL;
 
-	if (avformat_open_input(&media->formatContext, media->fileName, NULL, NULL) != 0)
+	if (avformat_open_input(&media.formatContext, media.fileName, NULL, NULL) != 0)
 	{
 		fprintf(stderr, "Unable to open file\n");
-		goto fail2;
+		goto fail;
 	}
-	if (avformat_find_stream_info(media->formatContext, NULL) < 0)
+	if (avformat_find_stream_info(media.formatContext, NULL) < 0)
 	{
 		fprintf(stderr, "Unable to find streams\n");
-		goto fail2;
+		goto fail;
 	}
-	av_dump_format(media->formatContext, 0, media->fileName, 0);
+	av_dump_format(media.formatContext, 0, media.fileName, 0);
 
 	// Find Audio and Video streams
 
 	// Audio stream
-	for (unsigned i = 0; i < media->formatContext->nb_streams; ++i)
-		if (media->formatContext->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO)
+	for (unsigned i = 0; i < media.formatContext->nb_streams; ++i)
+		if (media.formatContext->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO)
 		{
-			if (!av_stream_context(media->formatContext, i, &media->ccA)) break;
-			media->streamIndexA = i;
-			media->streamA = media->formatContext->streams[i];
-			media->audioBufferSize = media->audioBufferIndex = 0;
-			audio_load_SDL(media);
+			if (!av_stream_context(media.formatContext, i, &media.ccA)) break;
+			media.streamIndexA = i;
+			media.streamA = media.formatContext->streams[i];
+			media.audioBufferSize = media.audioBufferIndex = 0;
+			audio_load_SDL(&media);
 			break;
 		}
-	for (unsigned i = 0; i < media->formatContext->nb_streams; ++i)
-		if (media->formatContext->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO)
+	for (unsigned i = 0; i < media.formatContext->nb_streams; ++i)
+		if (media.formatContext->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO)
 		{
-			if (!av_stream_context(media->formatContext, i, &media->ccV)) break;
+			if (!av_stream_context(media.formatContext, i, &media.ccV)) break;
 
 			// TODO: Allow the window to be resized
-			media->outWidth = media->ccV->width;
-			media->outHeight = media->ccV->height;
-			media->swsContext = sws_getContext(media->ccV->width, media->ccV->height,
-			                                   media->ccV->pix_fmt,
-			                                   media->outWidth, media->outHeight,
+			media.outWidth = media.ccV->width;
+			media.outHeight = media.ccV->height;
+			media.swsContext = sws_getContext(media.ccV->width, media.ccV->height,
+			                                   media.ccV->pix_fmt,
+			                                   media.outWidth, media.outHeight,
 			                                   AV_PIX_FMT_YUV420P, SWS_BILINEAR,
 			                                   NULL, NULL, NULL);
-			media->streamIndexV = i;
-			media->screen = SDL_CreateWindow(media->fileName, SDL_WINDOWPOS_UNDEFINED,
+			media.streamIndexV = i;
+			media.screen = SDL_CreateWindow(media.fileName, SDL_WINDOWPOS_UNDEFINED,
 			                                 SDL_WINDOWPOS_UNDEFINED,
-			                                 media->outWidth, media->outHeight, 0);
-			if (!media->screen)
+			                                 media.outWidth, media.outHeight, 0);
+			if (!media.screen)
 			{
 				fprintf(stderr, "[SDL] %s\n", SDL_GetError());
 				break;
 			}
-			media->renderer = SDL_CreateRenderer(media->screen, -1, 0);
-			if (!media->renderer)
+			media.renderer = SDL_CreateRenderer(media.screen, -1, 0);
+			if (!media.renderer)
 			{
 				fprintf(stderr, "[SDL] %s\n", SDL_GetError());
-				media->screen = NULL;
+				media.screen = NULL;
 				break;
 			}
 
-			media->streamV = media->formatContext->streams[i];
-			Media_pictQueue_init(media);
-			media->threadVideo = SDL_CreateThread((int (*)(void*)) video_thread,
-			                                      "video", media);
+			media.streamV = media.formatContext->streams[i];
+			Media_pictQueue_init(&media);
+			media.threadVideo = SDL_CreateThread((int (*)(void*)) video_thread,
+			                                      "video", &media);
 			break;
 		}
 	// Empty media is not worth playing
-	if (!media->streamV && !media->streamA) goto fail2;
-	media->threadParse = SDL_CreateThread((int (*)(void*)) decode_thread,
-	                                      "decode", media);
-	if (!media->threadParse)
+	if (!media.streamV && !media.streamA) goto fail;
+	media.threadParse = SDL_CreateThread((int (*)(void*)) decode_thread,
+	                                      "decode", &media);
+	if (!media.threadParse)
 	{
 		fprintf(stderr, "Failed to launch thread\n");
-		goto fail2;
+		goto fail;
 	}
 
-	schedule_refresh(media, 40);
+	schedule_refresh(&media, 40);
 	while (true)
 	{
 		SDL_Event event;
@@ -273,9 +268,9 @@ void play_file(char const* fileName)
 		{
 		case CHAL_EVENT_QUIT:
 		case SDL_QUIT:
-			media->state = STATE_QUIT;
+			media.state = STATE_QUIT;
 			SDL_Quit();
-			goto fail1;
+			goto fail;
 			break;
 		case CHAL_EVENT_REFRESH:
 			video_refresh_timer(event.user.data1);
@@ -285,24 +280,16 @@ void play_file(char const* fileName)
 		}
 	}
 
-fail2:
-	if (media->streamV) Media_pictQueue_destroy(media);
-	SDL_DestroyRenderer(media->renderer);
-	SDL_DestroyWindow(media->screen);
-	if (media->ccA) audio_unload_SDL(media);
-	avcodec_close(media->ccA);
-	avcodec_close(media->ccV);
-	avformat_close_input(&media->formatContext);
-
-fail1:
-	Media_destroy(media);
-	av_free(media);
-fail0:
+fail:
+	if (media.streamV) Media_pictQueue_destroy(&media);
+	SDL_DestroyRenderer(media.renderer);
+	SDL_DestroyWindow(media.screen);
+	if (media.ccA) audio_unload_SDL(&media);
+	avcodec_close(media.ccA);
+	avcodec_close(media.ccV);
+	avformat_close_input(&media.formatContext);
+	Media_destroy(&media);
 	return;
-}
-void test()
-{
-	fprintf(stdout, "Executing Chalcocite test routine\n");
 }
 
 int main(int argc, char* argv[])
@@ -321,19 +308,20 @@ int main(int argc, char* argv[])
 	{
 		if (strcmp(argv[1], "--help") == 0)
 		{
-			fprintf(stdout, "Usage\n"
-					"Execute with no argument to enter the interactive console\n"
-					"--test/-t: Execute a test routine to check functions\n"
-					"--file/-f: Play a media file. The file name must be supplied after"
-					" the argument.\n");
+			fprintf(stdout,
+			        "Usage:\n"
+			        "Execute with no argument to enter the interactive console\n"
+			        "--test/-t: Execute a test routine to check functions\n"
+			        "--file/-f: Play a media file. The file name must be supplied after"
+			        " the argument.\n");
 		}
 		else if (strcmp(argv[1], "--test") == 0 ||
-				strcmp(argv[1], "-t") == 0)
+		         strcmp(argv[1], "-t") == 0)
 		{
 			test();
 		}
 		else if (strcmp(argv[1], "--file") == 0 ||
-				strcmp(argv[1], "-f") == 0)
+		         strcmp(argv[1], "-f") == 0)
 		{
 			if (argc > 2)
 				play_file(argv[2]);

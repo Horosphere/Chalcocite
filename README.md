@@ -4,6 +4,10 @@ Command line video/audio player using FFmpeg based on FFplay.
 
 ## Usage
 
+To execute a test routine:
+```
+Chalcocite --test
+```
 To display usage:
 ```
 Chalcocite --help
