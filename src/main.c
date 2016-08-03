@@ -181,7 +181,7 @@ static int decode_thread(struct Media* const media)
 
 	return 0;
 }
-void test(char const* fileName)
+void play_file(char const* fileName)
 {
 	struct Media* media = av_malloc(sizeof(struct Media));
 	if (!media)
@@ -300,6 +300,10 @@ fail1:
 fail0:
 	return;
 }
+void test()
+{
+	fprintf(stdout, "Executing Chalcocite test routine\n");
+}
 
 int main(int argc, char* argv[])
 {
@@ -313,9 +317,31 @@ int main(int argc, char* argv[])
 		fprintf(stderr, "[SDL] %s\n", SDL_GetError());
 		return -1;
 	}
-	if (argc == 2)
+	if (argc > 1)
 	{
-		test(argv[1]);
+		if (strcmp(argv[1], "--help") == 0)
+		{
+			fprintf(stdout, "Usage\n"
+					"Execute with no argument to enter the interactive console\n"
+					"--test/-t: Execute a test routine to check functions\n"
+					"--file/-f: Play a media file. The file name must be supplied after"
+					" the argument.\n");
+		}
+		else if (strcmp(argv[1], "--test") == 0 ||
+				strcmp(argv[1], "-t") == 0)
+		{
+			test();
+		}
+		else if (strcmp(argv[1], "--file") == 0 ||
+				strcmp(argv[1], "-f") == 0)
+		{
+			if (argc > 2)
+				play_file(argv[2]);
+			else
+				fprintf(stderr, "Argument error: Please supply one or more file names\n");
+		}
+		else
+			fprintf(stderr, "Argument error: Unknown argument\n");
 		return 0;
 	}
 
@@ -338,10 +364,14 @@ int main(int argc, char* argv[])
 		}
 		else if (strcmp(token, "test") == 0)
 		{
+			test();
+		}
+		else if (strcmp(token, "play") == 0)
+		{
 			token = strtok(NULL, " ");
 			if (!token)
 				printf("Please supply an argument\n");
-			test(token);
+			play_file(token);
 		}
 		else if (strcmp(token, "blank") == 0)
 		{

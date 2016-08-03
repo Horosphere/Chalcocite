@@ -4,24 +4,27 @@ Command line video/audio player using FFmpeg based on FFplay.
 
 ## Usage
 
-Currently, Chalcocite can only play videos that have an audio channel. To play
-a video, execute
+To display usage:
 ```
-Chalcocite <media-file>
+Chalcocite --help
+```
+To play a media file, execute
+```
+Chalcocite --file <media-file>
 ```
 Alternatively, Chalcocite has an interactive console:
 ```
 $ Chalcocite
-(chal) test <media-file>
+(chal) play <media-file>
 ```
 `quit` terminates Chalcocite from the interactive console.
 
 ## Building
 
-Chalcocite depends on SDL2, FFmpeg, and GNU Readline. It is recommended to do an
-out-of-source build. Execute
+Chalcocite depends on SDL2, FFmpeg, and GNU Readline. It is recommended to do
+an out-of-source build. Execute
 ```
-make build
+mkdir build
 cd build
 cmake ..
 ```

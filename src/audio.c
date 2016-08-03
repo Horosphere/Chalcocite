@@ -29,7 +29,7 @@ int audio_decode_frame(struct Media* media, uint8_t* buffer,
 				                                      media->audioFrame.nb_samples,
 				                                      media->ccA->sample_fmt, 1);
 				assert(dataSize <= bufferSize);
-				swr_convert(media->swrContext, &buffer, AUDIO_BUFFER_MAX_SIZE,
+				swr_convert(media->swrContext, &buffer, bufferSize,
 						(uint8_t const**) media->audioFrame.extended_data,
 						media->audioFrame.nb_samples);
 				//memcpy(buffer, media->audioFrame.data[0], dataSize);
