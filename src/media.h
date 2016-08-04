@@ -11,7 +11,6 @@
 #include "chalcocite.h"
 #include "videopicture.h"
 
-#define AUDIO_BUFFER_MAX_SIZE (192000 * 3 / 2)
 #define AUDIO_QUEUE_MAX_SIZE (5 * 16 * 1024)
 #define VIDEO_QUEUE_MAX_SIZE (5 * 256 * 1024)
 #define PICTQUEUE_SIZE 1
@@ -30,18 +29,10 @@ struct Media
 	AVStream* streamA; ///< streamA is NULL if no audio
 	AVCodecContext* ccA; ///< Audio codec context
 	PacketQueue queueA; ///< Packet queue to store audio packets.
-	/*
-	 * The following are used by audio.h functions
-	 */
-	uint8_t audioBuffer[AUDIO_BUFFER_MAX_SIZE];
-	size_t audioBufferSize;
-	size_t audioBufferIndex;
-	AVPacket audioPacket;
-	uint8_t* audioPacketData;
-	size_t audioPacketSize;
-	AVFrame audioFrame;
 
+	SDL_AudioSpec audioSpec;
 	struct SwrContext* swrContext; ///< Converts audio to SDL playable format
+	SDL_AudioDeviceID audioDevice;
 
 	unsigned streamIndexV;
 	AVStream* streamV; // = NULL if no video
@@ -66,6 +57,7 @@ struct Media
 
 	
 	SDL_Thread* threadParse;
+	SDL_Thread* threadAudio;
 	SDL_Thread* threadVideo;
 
 };

@@ -74,6 +74,7 @@ static void video_refresh_timer(struct Media* const media)
 }
 static int video_thread(struct Media* const media)
 {
+	// TODO: Move frame allocations to main thread
 	AVFrame* frame = av_frame_alloc();
 	if (!frame) return -1;
 	AVFrame* frameRGB = av_frame_alloc();
@@ -125,6 +126,44 @@ static int video_thread(struct Media* const media)
 	av_frame_free(&frame);
 	return 0;
 }
+static int audio_thread(struct Media* const media)
+{
+	AVFrame* frame = av_frame_alloc();
+	uint8_t* buffer = malloc(192000 * 3 / 2);
+	while (true)
+	{
+		AVPacket packet;
+		if (PacketQueue_get(&media->queueA, &packet, true, &media->state) < 0)
+		{
+			break;
+		}
+		while (packet.size > 0)
+		{
+		int gotFrame = 0;
+		int dataSize = avcodec_decode_audio4(media->ccA, frame, &gotFrame, &packet);
+		if (dataSize >= 0 && gotFrame)
+		{
+			packet.size -= dataSize;
+			packet.data += dataSize;
+			int bufferSize = av_samples_get_buffer_size(NULL, media->ccA->channels,
+					frame->nb_samples, AV_SAMPLE_FMT_FLT, true);
+			swr_convert(media->swrContext, &buffer, bufferSize,
+					(uint8_t const**) frame->extended_data,
+					frame->nb_samples);
+			SDL_QueueAudio(media->audioDevice, buffer, bufferSize);
+		}
+		else
+		{
+			packet.size = 0;
+			packet.data = NULL;
+		}
+		}
+		av_packet_unref(&packet);
+	}
+	av_frame_free(&frame);
+	free(buffer);
+	return 0;
+}
 static int decode_thread(struct Media* const media)
 {
 
@@ -158,11 +197,15 @@ static int decode_thread(struct Media* const media)
 		{
 			if (media->streamV)
 				PacketQueue_put(&media->queueV, &packet);
+			else
+				av_packet_unref(&packet);
 		}
 		else if (packet.stream_index == (int) media->streamIndexA)
 		{
 			if (media->streamA)
 				PacketQueue_put(&media->queueA, &packet);
+			else
+				av_packet_unref(&packet);
 		}
 		else
 			av_packet_unref(&packet);
@@ -209,8 +252,9 @@ void play_file(char const* fileName)
 			if (!av_stream_context(media.formatContext, i, &media.ccA)) break;
 			media.streamIndexA = i;
 			media.streamA = media.formatContext->streams[i];
-			media.audioBufferSize = media.audioBufferIndex = 0;
 			audio_load_SDL(&media);
+			media.threadAudio = SDL_CreateThread((int (*)(void*)) audio_thread,
+			                                      "audio", &media);
 			break;
 		}
 	for (unsigned i = 0; i < media.formatContext->nb_streams; ++i)

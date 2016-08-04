@@ -52,32 +52,36 @@ void test()
 	specTarget.channels = 1;
 	specTarget.silence = 0;
 	specTarget.samples = 1024;
-	specTarget.callback = (SDL_AudioCallback) test_audio_callback;
-	specTarget.userdata = &data;
+	specTarget.callback = NULL; // Do not use callback, push audio instead
+	//specTarget.userdata = &data;
 
 	SDL_AudioSpec spec;
-	if (SDL_OpenAudio(&specTarget, &spec) < 0)
+	SDL_AudioDeviceID audioDevice =
+		SDL_OpenAudioDevice(NULL, 0,
+			&specTarget, &spec,
+			SDL_AUDIO_ALLOW_FORMAT_CHANGE);
+	if (!audioDevice)
 	{
 		fprintf(stderr, "[SDL] %s\n", SDL_GetError());
 		return;
 	}
-	SDL_PauseAudio(0);
+	SDL_PauseAudioDevice(audioDevice, 0);
+
+	int index = 0;
+	float samples[1024];
 	while (true)
 	{
-		SDL_Event event;
-		SDL_WaitEvent(&event);
-		switch (event.type)
+		if (index > 44100 * 5) break;
+		
+		for (int i = 0; i < 1024; ++i)
 		{
-		case CHAL_EVENT_QUIT:
-		case SDL_QUIT:
-			SDL_Quit();
-			goto finish;
-			break;
-		default:
-			break;
+			samples[i] = sin(2 * M_PI * (i * 0.01f +
+						(index + i) * (index + i) * 0.00001f));
 		}
+		SDL_QueueAudio(audioDevice, samples, sizeof(samples));
+		index += 1024;
+
 	}
-finish:
-	SDL_CloseAudio();
-	
+
+	SDL_CloseAudioDevice(audioDevice);
 }

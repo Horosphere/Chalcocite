@@ -16,7 +16,7 @@ typedef struct
 	AVPacketList* first; // First element of the list
 	AVPacketList* last; // Last element of the list
 	int nPackets;
-	int size; // Total size in bytes of the packets
+	size_t size; // Total size in bytes of the packets
 	SDL_mutex* mutex;
 	SDL_cond* cond;
 } PacketQueue;
@@ -26,6 +26,7 @@ typedef struct
  */
 void PacketQueue_init(PacketQueue* const);
 void PacketQueue_destroy(PacketQueue* const);
+
 /**
  * @brief Enqueue a AVPacket into a PacketQueue. Thread safe.
  * @return true if successful.
@@ -44,5 +45,9 @@ bool PacketQueue_put(PacketQueue* pq, AVPacket* packet);
 int PacketQueue_get(PacketQueue* pq, AVPacket* packet, bool block,
 		_Atomic enum State const* const state);
 
+inline size_t PacketQueue_size(PacketQueue* const pq)
+{
+	return pq->size;
+}
 
 #endif // !CHALCOCITE__PACKETQUEUE_H_
