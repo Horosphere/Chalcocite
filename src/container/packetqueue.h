@@ -6,7 +6,7 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 
-#include "chalcocite.h"
+#include "../chalcocite.h"
 
 /**
  * Linked list implementation of a queue.
@@ -45,7 +45,7 @@ bool PacketQueue_put(PacketQueue* pq, AVPacket* packet);
 int PacketQueue_get(PacketQueue* pq, AVPacket* packet, bool block,
 		_Atomic enum State const* const state);
 
-inline size_t PacketQueue_size(PacketQueue* const pq)
+static inline size_t PacketQueue_size(PacketQueue* const pq)
 {
 	return pq->size;
 }

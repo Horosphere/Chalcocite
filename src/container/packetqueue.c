@@ -1,7 +1,5 @@
 #include "packetqueue.h"
 
-#include "chalcocite.h"
-
 inline void PacketQueue_init(PacketQueue* const pq)
 {
 	memset(pq, 0, sizeof(PacketQueue));

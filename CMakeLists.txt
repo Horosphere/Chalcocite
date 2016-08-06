@@ -14,9 +14,10 @@ set (CMAKE_C_STANDARD 11)
 set(SOURCE_FILES
     ${PROJECT_SOURCE_DIR}/media.c
     ${PROJECT_SOURCE_DIR}/test.c
-    ${PROJECT_SOURCE_DIR}/packetqueue.c
     ${PROJECT_SOURCE_DIR}/main.c
     ${PROJECT_SOURCE_DIR}/audio.c
+    ${PROJECT_SOURCE_DIR}/container/packetqueue.c
+    ${PROJECT_SOURCE_DIR}/container/vectorptr.c
    )
 # Auto-generated end
 

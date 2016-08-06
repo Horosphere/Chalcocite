@@ -74,15 +74,8 @@ static void video_refresh_timer(struct Media* const media)
 }
 static int video_thread(struct Media* const media)
 {
-	// TODO: Move frame allocations to main thread
-	AVFrame* frame = av_frame_alloc();
-	if (!frame) return -1;
-	AVFrame* frameRGB = av_frame_alloc();
-	if (!frameRGB)
-	{
-		av_frame_free(&frame);
-		return -1;
-	}
+	uint8_t* imageData[3];
+	int imageLinesize[3];
 
 	// Allocate YV12 pixel array
 	size_t pitchUV = media->outWidth / 2;
@@ -95,22 +88,23 @@ static int video_thread(struct Media* const media)
 			break;
 		}
 		int finished;
-		avcodec_decode_video2(media->ccV, frame, &finished, &packet);
+		avcodec_decode_video2(media->ccV, media->frameVideo, &finished, &packet);
 
 		if (finished)
 		{
 			if (!Media_pictQueue_wait_write(media)) break;
 			struct VideoPicture* vp = &media->pictQueue[media->pictQueueIndexW];
-			frameRGB->data[0] = vp->planeY;
-			frameRGB->data[1] = vp->planeU;
-			frameRGB->data[2] = vp->planeV;
-			frameRGB->linesize[0] = media->outWidth;
-			frameRGB->linesize[1] = pitchUV;
-			frameRGB->linesize[2] = pitchUV;
+			imageData[0] = vp->planeY;
+			imageData[1] = vp->planeU;
+			imageData[2] = vp->planeV;
+			imageLinesize[0] = media->outWidth;
+			imageLinesize[1] = pitchUV;
+			imageLinesize[2] = pitchUV;
 
-			sws_scale(media->swsContext, (uint8_t const* const*) frame->data,
-			          frame->linesize, 0, media->ccV->height,
-			          frameRGB->data, frameRGB->linesize);
+			sws_scale(media->swsContext,
+					(uint8_t const* const*) media->frameVideo->data,
+			          media->frameVideo->linesize, 0, media->ccV->height,
+			          imageData, imageLinesize);
 
 			// Move picture queue writing index
 			if (++media->pictQueueIndexW == PICTQUEUE_SIZE)
@@ -122,13 +116,10 @@ static int video_thread(struct Media* const media)
 			av_packet_unref(&packet);
 		}
 	}
-	av_frame_free(&frameRGB);
-	av_frame_free(&frame);
 	return 0;
 }
 static int audio_thread(struct Media* const media)
 {
-	AVFrame* frame = av_frame_alloc();
 	uint8_t* buffer = malloc(192000 * 3 / 2);
 	while (true)
 	{
@@ -140,16 +131,17 @@ static int audio_thread(struct Media* const media)
 		while (packet.size > 0)
 		{
 		int gotFrame = 0;
-		int dataSize = avcodec_decode_audio4(media->ccA, frame, &gotFrame, &packet);
+		int dataSize = avcodec_decode_audio4(media->ccA, media->frameAudio,
+				&gotFrame, &packet);
 		if (dataSize >= 0 && gotFrame)
 		{
 			packet.size -= dataSize;
 			packet.data += dataSize;
 			int bufferSize = av_samples_get_buffer_size(NULL, media->ccA->channels,
-					frame->nb_samples, AV_SAMPLE_FMT_FLT, true);
+					media->frameAudio->nb_samples, AV_SAMPLE_FMT_S16, true);
 			swr_convert(media->swrContext, &buffer, bufferSize,
-					(uint8_t const**) frame->extended_data,
-					frame->nb_samples);
+					(uint8_t const**) media->frameAudio->extended_data,
+					media->frameAudio->nb_samples);
 			SDL_QueueAudio(media->audioDevice, buffer, bufferSize);
 		}
 		else
@@ -160,7 +152,6 @@ static int audio_thread(struct Media* const media)
 		}
 		av_packet_unref(&packet);
 	}
-	av_frame_free(&frame);
 	free(buffer);
 	return 0;
 }
@@ -174,8 +165,8 @@ static int decode_thread(struct Media* const media)
 		if (media->state == STATE_QUIT)
 			break;
 		// TODO: Seek
-		if (media->queueA.size > AUDIO_QUEUE_MAX_SIZE ||
-		    media->queueV.size > VIDEO_QUEUE_MAX_SIZE)
+		if (PacketQueue_size(&media->queueA) > AUDIO_QUEUE_MAX_SIZE ||
+		    PacketQueue_size(&media->queueV) > VIDEO_QUEUE_MAX_SIZE)
 		{
 			SDL_Delay(10);
 			continue;
@@ -377,6 +368,12 @@ int main(int argc, char* argv[])
 		return 0;
 	}
 
+	int nAudioDevices = SDL_GetNumAudioDevices(0);
+
+	if (!nAudioDevices)
+	{
+		fprintf(stdout, "Warning: No audio device found\n");
+	}
 	while (true)
 	{
 		char* line = readline("(chal) ");
@@ -398,24 +395,34 @@ int main(int argc, char* argv[])
 		{
 			test();
 		}
+		else if (strcmp(token, "info") == 0)
+		{
+			token = strtok(NULL, " ");
+			if (!token)
+			{
+				printf("Usage:\n"
+						"info devices: Print available audio devices\n");
+				continue;
+			}
+			nAudioDevices = SDL_GetNumAudioDevices(0);
+			printf("Total number of devices: %d\n", nAudioDevices);
+			for (int i = 0; i < nAudioDevices; ++i)
+			{
+				printf("%d: %s\n", i, SDL_GetAudioDeviceName(i, 0));
+			}
+		}
+		else if (strcmp(token, "refresh") == 0 ||
+				strcmp(token, "re") == 0)
+		{
+			nAudioDevices = SDL_GetNumAudioDevices(0);
+		}
 		else if (strcmp(token, "play") == 0)
 		{
 			token = strtok(NULL, " ");
 			if (!token)
 				printf("Please supply an argument\n");
-			play_file(token);
-		}
-		else if (strcmp(token, "blank") == 0)
-		{
-			SDL_Window* screen = SDL_CreateWindow("Test",
-			                                      SDL_WINDOWPOS_UNDEFINED,
-			                                      SDL_WINDOWPOS_UNDEFINED,
-			                                      640, 480, 0);
-			SDL_Renderer* renderer = SDL_CreateRenderer(screen, -1, 0);
-
-			SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-			SDL_RenderClear(renderer);
-			SDL_RenderPresent(renderer);
+			else
+				play_file(token);
 		}
 		else
 		{

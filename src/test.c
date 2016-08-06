@@ -16,7 +16,7 @@ struct TestData
 };
 
 void test_audio_callback(struct TestData* data,
-		uint8_t* stream, int len)
+                         uint8_t* stream, int len)
 {
 	(void) data;
 	(void) stream;
@@ -29,7 +29,7 @@ void test_audio_callback(struct TestData* data,
 		event.user.data1 = data;
 		SDL_PushEvent(&event);
 	}
-	
+
 	float* floatStream = (float*) stream;
 	for (size_t i = 0; i < len / sizeof(float); ++i)
 	{
@@ -41,6 +41,16 @@ void test_audio_callback(struct TestData* data,
 void test()
 {
 	fprintf(stdout, "Executing Chalcocite test routine\n");
+
+	SDL_Window* screen = SDL_CreateWindow("Test",
+	                                      SDL_WINDOWPOS_UNDEFINED,
+	                                      SDL_WINDOWPOS_UNDEFINED,
+	                                      640, 480, 0);
+	SDL_Renderer* renderer = SDL_CreateRenderer(screen, -1, 0);
+
+	SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+	SDL_RenderClear(renderer);
+	SDL_RenderPresent(renderer);
 
 	struct TestData data;
 	memset(&data, 0, sizeof(struct TestData));
@@ -57,9 +67,9 @@ void test()
 
 	SDL_AudioSpec spec;
 	SDL_AudioDeviceID audioDevice =
-		SDL_OpenAudioDevice(NULL, 0,
-			&specTarget, &spec,
-			SDL_AUDIO_ALLOW_FORMAT_CHANGE);
+	  SDL_OpenAudioDevice(NULL, 0,
+	                      &specTarget, &spec,
+	                      SDL_AUDIO_ALLOW_FORMAT_CHANGE);
 	if (!audioDevice)
 	{
 		fprintf(stderr, "[SDL] %s\n", SDL_GetError());
@@ -72,11 +82,11 @@ void test()
 	while (true)
 	{
 		if (index > 44100 * 5) break;
-		
+
 		for (int i = 0; i < 1024; ++i)
 		{
 			samples[i] = sin(2 * M_PI * (i * 0.01f +
-						(index + i) * (index + i) * 0.00001f));
+			                             (index + i) * (index + i) * 0.00001f));
 		}
 		SDL_QueueAudio(audioDevice, samples, sizeof(samples));
 		index += 1024;
@@ -84,4 +94,6 @@ void test()
 	}
 
 	SDL_CloseAudioDevice(audioDevice);
+	SDL_DestroyRenderer(renderer);
+	SDL_DestroyWindow(screen);
 }

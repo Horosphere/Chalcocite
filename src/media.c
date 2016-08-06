@@ -12,6 +12,8 @@ void Media_init(struct Media* const media)
 	media->pictQueueCond = SDL_CreateCond();
 	PacketQueue_init(&media->queueA);
 	PacketQueue_init(&media->queueV);
+	media->frameVideo = av_frame_alloc();
+	media->frameAudio = av_frame_alloc();
 }
 void Media_destroy(struct Media* const media)
 {
@@ -22,6 +24,8 @@ void Media_destroy(struct Media* const media)
 	PacketQueue_destroy(&media->queueV);
 	swr_free(&media->swrContext);
 	sws_freeContext(media->swsContext);
+	av_frame_free(&media->frameVideo);
+	av_frame_free(&media->frameAudio);
 }
 bool Media_pictQueue_init(struct Media* const media)
 {

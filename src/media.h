@@ -7,9 +7,9 @@
 #include <libavutil/imgutils.h>
 #include <libswresample/swresample.h>
 
-#include "packetqueue.h"
 #include "chalcocite.h"
 #include "videopicture.h"
+#include "container/packetqueue.h"
 
 #define AUDIO_QUEUE_MAX_SIZE (5 * 16 * 1024)
 #define VIDEO_QUEUE_MAX_SIZE (5 * 256 * 1024)
@@ -59,6 +59,10 @@ struct Media
 	SDL_Thread* threadParse;
 	SDL_Thread* threadAudio;
 	SDL_Thread* threadVideo;
+
+	// Cache
+	AVFrame* frameVideo;
+	AVFrame* frameAudio;
 
 };
 
