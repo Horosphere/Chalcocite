@@ -5,7 +5,7 @@
 
 void Media_init(struct Media* const media)
 {
-	if (!media) return;
+	assert(media);
 	memset(media, 0, sizeof(struct Media));
 	media->streamIndexA = media->streamIndexV = CHAL_UNSIGNED_INVALID;
 	media->pictQueueMutex = SDL_CreateMutex();
@@ -29,6 +29,9 @@ void Media_destroy(struct Media* const media)
 }
 bool Media_pictQueue_init(struct Media* const media)
 {
+	assert(media);
+	assert(media->renderer);
+	assert(media->outWidth != 0 && media->outHeight != 0);
 	for (size_t i = 0; i < PICTQUEUE_SIZE; ++i)
 	{
 		struct VideoPicture* const vp = &media->pictQueue[i];
@@ -53,6 +56,7 @@ fail:
 }
 void Media_pictQueue_destroy(struct Media* const media)
 {
+	if (!media) return;
 	for (size_t i = 0; i < PICTQUEUE_SIZE; ++i)
 	{
 		struct VideoPicture* const vp = &media->pictQueue[i];

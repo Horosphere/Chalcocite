@@ -32,3 +32,22 @@ mkdir build
 cd build
 cmake ..
 ```
+
+## Developing
+
+All C codes are formatted with astyle and the configuration
+```
+--style=allman
+--align-pointer=type	
+--close-templates
+--convert-tabs
+--indent-preproc-block
+--indent-preproc-define
+--indent=tab=2
+--pad-header
+--unpad-paren
+```
+
+`typedef struct` should only be used when the struct is opaque. That is, the
+user is not allowed to access its members. Similar applies for
+`typedef union`. `typedef enum` is forbidden.
