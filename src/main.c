@@ -48,17 +48,13 @@ static void video_refresh_timer(struct Media* const media)
 			assert(vp->texture &&
 			       vp->planeY && vp->planeU && vp->planeV);
 
-			SDL_Rect rect;
-			rect.x = rect.y = 0;
-			rect.w = vp->width;
-			rect.h = vp->height;
 			SDL_UpdateYUVTexture(vp->texture, NULL,
 			                     vp->planeY, vp->width,
 			                     vp->planeU, vp->width / 2,
 			                     vp->planeV, vp->width / 2);
 			//SDL_SetRenderDrawColor(media->renderer, 255, 127, 255, 255);
 			SDL_RenderClear(media->renderer);
-			SDL_RenderCopy(media->renderer, vp->texture, NULL, &rect);
+			SDL_RenderCopy(media->renderer, vp->texture, NULL, 0);
 			SDL_RenderPresent(media->renderer);
 
 			++media->pictQueueIndexR;
@@ -77,12 +73,11 @@ static int video_thread(struct Media* const media)
 	uint8_t* imageData[3];
 	int imageLinesize[3];
 
-	// Allocate YV12 pixel array
 	size_t pitchUV = media->outWidth / 2;
 
 	while (true)
 	{
-		AVPacket packet;
+		struct AVPacket packet;
 		if (PacketQueue_get(&media->queueV, &packet, true, &media->state) < 0)
 		{
 			break;
@@ -123,7 +118,7 @@ static int audio_thread(struct Media* const media)
 	uint8_t* buffer = malloc(192000 * 3 / 2);
 	while (true)
 	{
-		AVPacket packet;
+		struct AVPacket packet;
 		if (PacketQueue_get(&media->queueA, &packet, true, &media->state) < 0)
 		{
 			break;
@@ -157,9 +152,7 @@ static int audio_thread(struct Media* const media)
 }
 static int decode_thread(struct Media* const media)
 {
-
-	// TODO: If streams not found, silence either video or audio
-	AVPacket packet;
+	struct AVPacket packet;
 	while (true)
 	{
 		if (media->state == STATE_QUIT)
@@ -244,7 +237,7 @@ void play_file(char const* fileName)
 			media.streamIndexA = i;
 			media.streamA = media.formatContext->streams[i];
 			audio_load_SDL(&media);
-			media.threadAudio = SDL_CreateThread((int (*)(void*)) audio_thread,
+			media.threadAudio = SDL_CreateThread((SDL_ThreadFunction) audio_thread,
 			                                      "audio", &media);
 			break;
 		}
@@ -264,7 +257,8 @@ void play_file(char const* fileName)
 			media.streamIndexV = i;
 			media.screen = SDL_CreateWindow(media.fileName, SDL_WINDOWPOS_UNDEFINED,
 			                                 SDL_WINDOWPOS_UNDEFINED,
-			                                 media.outWidth, media.outHeight, 0);
+			                                 media.outWidth, media.outHeight,
+			                                 SDL_WINDOW_RESIZABLE);
 			if (!media.screen)
 			{
 				fprintf(stderr, "[SDL] %s\n", SDL_GetError());
@@ -280,13 +274,13 @@ void play_file(char const* fileName)
 
 			media.streamV = media.formatContext->streams[i];
 			Media_pictQueue_init(&media);
-			media.threadVideo = SDL_CreateThread((int (*)(void*)) video_thread,
+			media.threadVideo = SDL_CreateThread((SDL_ThreadFunction) video_thread,
 			                                      "video", &media);
 			break;
 		}
 	// Empty media is not worth playing
 	if (!media.streamV && !media.streamA) goto fail;
-	media.threadParse = SDL_CreateThread((int (*)(void*)) decode_thread,
+	media.threadParse = SDL_CreateThread((SDL_ThreadFunction) decode_thread,
 	                                      "decode", &media);
 	if (!media.threadParse)
 	{

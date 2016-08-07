@@ -32,6 +32,9 @@ bool Media_pictQueue_init(struct Media* const media)
 	assert(media);
 	assert(media->renderer);
 	assert(media->outWidth != 0 && media->outHeight != 0);
+
+	size_t planeSizeY = media->outWidth * media->outHeight;
+	size_t planeSizeUV = planeSizeY / 4;
 	for (size_t i = 0; i < PICTQUEUE_SIZE; ++i)
 	{
 		struct VideoPicture* const vp = &media->pictQueue[i];
@@ -42,8 +45,6 @@ bool Media_pictQueue_init(struct Media* const media)
 		                                SDL_TEXTUREACCESS_STREAMING,
 		                                vp->width, vp->height);
 		if (!vp->texture) goto fail;
-		size_t planeSizeY = vp->width * vp->height;
-		size_t planeSizeUV = planeSizeY / 4;
 		vp->planeY = malloc(sizeof(*vp->planeY) * planeSizeY);
 		vp->planeU = malloc(sizeof(*vp->planeU) * planeSizeUV);
 		vp->planeV = malloc(sizeof(*vp->planeV) * planeSizeUV);
@@ -68,6 +69,7 @@ void Media_pictQueue_destroy(struct Media* const media)
 }
 bool Media_pictQueue_wait_write(struct Media* const media)
 {
+	assert(media);
 	SDL_LockMutex(media->pictQueueMutex);
 	while (media->pictQueueSize >= PICTQUEUE_SIZE && media->state != STATE_QUIT)
 		SDL_CondWait(media->pictQueueCond, media->pictQueueMutex);
@@ -77,8 +79,8 @@ bool Media_pictQueue_wait_write(struct Media* const media)
 	return true;
 }
 
-bool av_stream_context(AVFormatContext* const fc, unsigned streamIndex,
-                       AVCodecContext** const cc)
+bool av_stream_context(struct AVFormatContext* const fc, unsigned streamIndex,
+                       struct AVCodecContext** const cc)
 {
 	assert(streamIndex < fc->nb_streams);
 
