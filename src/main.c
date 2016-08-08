@@ -11,10 +11,14 @@
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/time.h>
 
 #include "media.h"
 #include "audio.h"
 #include "test.h"
+
+#define SYNC_LOWER_THRESHOULD 0.01
+#define SYNC_UPPER_THRESHOULD 10.0
 
 static uint32_t refresh_timer_cb(uint32_t interval, void* data)
 {
@@ -35,45 +39,79 @@ static void schedule_refresh(struct Media* const media, int delay)
 }
 static void video_refresh_timer(struct Media* const media)
 {
-	if (media->streamV)
+	if (!media->streamV) 
 	{
-		if (media->pictQueueSize == 0)
-			schedule_refresh(media, 1);
-		else
-		{
-			schedule_refresh(media, 40);
-
-			// Show picture
-			struct VideoPicture* vp = &media->pictQueue[media->pictQueueIndexR];
-			assert(vp->texture &&
-			       vp->planeY && vp->planeU && vp->planeV);
-
-			SDL_UpdateYUVTexture(vp->texture, NULL,
-			                     vp->planeY, vp->width,
-			                     vp->planeU, vp->width / 2,
-			                     vp->planeV, vp->width / 2);
-			//SDL_SetRenderDrawColor(media->renderer, 255, 127, 255, 255);
-			SDL_RenderClear(media->renderer);
-			SDL_RenderCopy(media->renderer, vp->texture, NULL, 0);
-			SDL_RenderPresent(media->renderer);
-
-			++media->pictQueueIndexR;
-			if (media->pictQueueIndexR == PICTQUEUE_SIZE)
-				media->pictQueueIndexR = 0;
-			SDL_LockMutex(media->pictQueueMutex);
-			--media->pictQueueSize;
-			SDL_CondSignal(media->pictQueueCond);
-			SDL_UnlockMutex(media->pictQueueMutex);
-		}
+		schedule_refresh(media, 100);
+		return;
 	}
-	else schedule_refresh(media, 100);
+
+	if (media->pictQueueSize == 0)
+		schedule_refresh(media, 1);
+	else
+	{
+		// Show picture
+		struct VideoPicture* vp = &media->pictQueue[media->pictQueueIndexR];
+		assert(vp->texture &&
+		       vp->planeY && vp->planeU && vp->planeV);
+
+		// Synchronise with audio
+		double delay = vp->timestamp - media->lastFrameTimestamp;
+		if (delay <= 0.0 || delay >= 1.0)
+			delay = media->lastFrameDelay;
+		media->lastFrameDelay = delay;
+		media->lastFrameTimestamp = vp->timestamp;
+
+		double audioReference = Media_get_audio_clock(media);
+		double diff = vp->timestamp - audioReference;
+		double syncThreshould = (delay > SYNC_LOWER_THRESHOULD) ? delay :
+			SYNC_LOWER_THRESHOULD;
+		if (fabs(diff) < syncThreshould)
+		{
+			if (diff <= syncThreshould)
+				delay = 0.0;
+			else if (diff >= syncThreshould)
+				delay *= 2.0;
+		}
+		media->timer += delay;
+		// 1,000,000 converts microsecond to second
+		double delayReal = media->timer - (av_gettime() / 1000000.0);
+		if (delayReal < 0.01) delayReal = 0.01;
+		
+		fprintf(stdout, "[Video] F:%f, D:%f, A:%f, T:%f, R:%f\n",
+				media->timer, delay, audioReference, vp->timestamp, delayReal);
+		schedule_refresh(media, (int)(delayReal * 1000 + 0.5));
+
+
+		SDL_UpdateYUVTexture(vp->texture, NULL,
+		                     vp->planeY, vp->width,
+		                     vp->planeU, vp->width / 2,
+		                     vp->planeV, vp->width / 2);
+		//SDL_SetRenderDrawColor(media->renderer, 255, 127, 255, 255);
+		SDL_RenderClear(media->renderer);
+		SDL_RenderCopy(media->renderer, vp->texture, NULL, 0);
+		SDL_RenderPresent(media->renderer);
+
+		++media->pictQueueIndexR;
+		if (media->pictQueueIndexR == PICTQUEUE_SIZE)
+			media->pictQueueIndexR = 0;
+		SDL_LockMutex(media->pictQueueMutex);
+		--media->pictQueueSize;
+		SDL_CondSignal(media->pictQueueCond);
+		SDL_UnlockMutex(media->pictQueueMutex);
+	}
 }
 static int video_thread(struct Media* const media)
 {
+	AVFrame* frame = media->frameVideo;
 	uint8_t* imageData[3];
 	int imageLinesize[3];
 
 	size_t pitchUV = media->outWidth / 2;
+
+	double pts;
+
+	media->timer = (double)av_gettime() / 1000000.0;
+	media->lastFrameDelay = 40e-3;
 
 	while (true)
 	{
@@ -83,10 +121,15 @@ static int video_thread(struct Media* const media)
 			break;
 		}
 		int finished;
-		avcodec_decode_video2(media->ccV, media->frameVideo, &finished, &packet);
+		avcodec_decode_video2(media->ccV, frame, &finished, &packet);
+
+		pts = packet.dts == AV_NOPTS_VALUE ? 0.0 :
+			av_frame_get_best_effort_timestamp(frame);
+		pts *= av_q2d(media->streamV->time_base);
 
 		if (finished)
 		{
+			pts = Media_synchronise_video(media, frame, pts);
 			if (!Media_pictQueue_wait_write(media)) break;
 			struct VideoPicture* vp = &media->pictQueue[media->pictQueueIndexW];
 			imageData[0] = vp->planeY;
@@ -97,9 +140,10 @@ static int video_thread(struct Media* const media)
 			imageLinesize[2] = pitchUV;
 
 			sws_scale(media->swsContext,
-					(uint8_t const* const*) media->frameVideo->data,
-			          media->frameVideo->linesize, 0, media->ccV->height,
+			          (uint8_t const* const*) frame->data,
+			          frame->linesize, 0, media->ccV->height,
 			          imageData, imageLinesize);
+			vp->timestamp = pts;
 
 			// Move picture queue writing index
 			if (++media->pictQueueIndexW == PICTQUEUE_SIZE)
@@ -115,6 +159,7 @@ static int video_thread(struct Media* const media)
 }
 static int audio_thread(struct Media* const media)
 {
+	AVFrame* frame = media->frameAudio;
 	uint8_t* buffer = malloc(192000 * 3 / 2);
 	while (true)
 	{
@@ -125,25 +170,31 @@ static int audio_thread(struct Media* const media)
 		}
 		while (packet.size > 0)
 		{
-		int gotFrame = 0;
-		int dataSize = avcodec_decode_audio4(media->ccA, media->frameAudio,
-				&gotFrame, &packet);
-		if (dataSize >= 0 && gotFrame)
-		{
-			packet.size -= dataSize;
-			packet.data += dataSize;
-			int bufferSize = av_samples_get_buffer_size(NULL, media->ccA->channels,
-					media->frameAudio->nb_samples, AV_SAMPLE_FMT_S16, true);
-			swr_convert(media->swrContext, &buffer, bufferSize,
-					(uint8_t const**) media->frameAudio->extended_data,
-					media->frameAudio->nb_samples);
-			SDL_QueueAudio(media->audioDevice, buffer, bufferSize);
-		}
-		else
-		{
-			packet.size = 0;
-			packet.data = NULL;
-		}
+			int gotFrame = 0;
+			int dataSize = avcodec_decode_audio4(media->ccA, frame,
+			                                     &gotFrame, &packet);
+			if (dataSize >= 0 && gotFrame)
+			{
+				packet.size -= dataSize;
+				packet.data += dataSize;
+				int bufferSize = av_samples_get_buffer_size(NULL, media->ccA->channels,
+				                 frame->nb_samples, AV_SAMPLE_FMT_S16, true);
+				swr_convert(media->swrContext, &buffer, bufferSize,
+				            (uint8_t const**) frame->extended_data,
+				            frame->nb_samples);
+				SDL_QueueAudio(media->audioDevice, buffer, bufferSize);
+
+				media->clockAudio += bufferSize / (media->ccA->channels *
+						media->ccA->sample_rate);
+			}
+			else
+			{
+				packet.size = 0;
+				packet.data = NULL;
+			}
+
+			if (packet.pts != AV_NOPTS_VALUE)
+				media->clockAudio = av_q2d(media->streamA->time_base) * packet.pts;
 		}
 		av_packet_unref(&packet);
 	}
@@ -238,7 +289,7 @@ void play_file(char const* fileName)
 			media.streamA = media.formatContext->streams[i];
 			audio_load_SDL(&media);
 			media.threadAudio = SDL_CreateThread((SDL_ThreadFunction) audio_thread,
-			                                      "audio", &media);
+			                                     "audio", &media);
 			break;
 		}
 	for (unsigned i = 0; i < media.formatContext->nb_streams; ++i)
@@ -250,15 +301,15 @@ void play_file(char const* fileName)
 			media.outWidth = media.ccV->width;
 			media.outHeight = media.ccV->height;
 			media.swsContext = sws_getContext(media.ccV->width, media.ccV->height,
-			                                   media.ccV->pix_fmt,
-			                                   media.outWidth, media.outHeight,
-			                                   AV_PIX_FMT_YUV420P, SWS_BILINEAR,
-			                                   NULL, NULL, NULL);
+			                                  media.ccV->pix_fmt,
+			                                  media.outWidth, media.outHeight,
+			                                  AV_PIX_FMT_YUV420P, SWS_BILINEAR,
+			                                  NULL, NULL, NULL);
 			media.streamIndexV = i;
 			media.screen = SDL_CreateWindow(media.fileName, SDL_WINDOWPOS_UNDEFINED,
-			                                 SDL_WINDOWPOS_UNDEFINED,
-			                                 media.outWidth, media.outHeight,
-			                                 SDL_WINDOW_RESIZABLE);
+			                                SDL_WINDOWPOS_UNDEFINED,
+			                                media.outWidth, media.outHeight,
+			                                SDL_WINDOW_RESIZABLE);
 			if (!media.screen)
 			{
 				fprintf(stderr, "[SDL] %s\n", SDL_GetError());
@@ -275,13 +326,13 @@ void play_file(char const* fileName)
 			media.streamV = media.formatContext->streams[i];
 			Media_pictQueue_init(&media);
 			media.threadVideo = SDL_CreateThread((SDL_ThreadFunction) video_thread,
-			                                      "video", &media);
+			                                     "video", &media);
 			break;
 		}
 	// Empty media is not worth playing
 	if (!media.streamV && !media.streamA) goto fail;
 	media.threadParse = SDL_CreateThread((SDL_ThreadFunction) decode_thread,
-	                                      "decode", &media);
+	                                     "decode", &media);
 	if (!media.threadParse)
 	{
 		fprintf(stderr, "Failed to launch thread\n");
@@ -395,7 +446,7 @@ int main(int argc, char* argv[])
 			if (!token)
 			{
 				printf("Usage:\n"
-						"info devices: Print available audio devices\n");
+				       "info devices: Print available audio devices\n");
 				continue;
 			}
 			nAudioDevices = SDL_GetNumAudioDevices(0);
@@ -406,7 +457,7 @@ int main(int argc, char* argv[])
 			}
 		}
 		else if (strcmp(token, "refresh") == 0 ||
-				strcmp(token, "re") == 0)
+		         strcmp(token, "re") == 0)
 		{
 			nAudioDevices = SDL_GetNumAudioDevices(0);
 		}

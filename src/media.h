@@ -16,6 +16,20 @@
 #define PICTQUEUE_SIZE 1
 
 /**
+ * @brief Extracts and copies codec context of given stream. Guarenteed to
+ *  clean up upon failure.
+ * @param[in] fc An opened AVFormatContext that has stream info. That is,
+ *  avformat_find_stream_info(fc, NULL) >= 0
+ * @param[in] streamIndex Index of the stream in the format context. Must be
+ *  less than fc->nb_streams
+ * @param[out] cc Output to store the copied AVCodecContext. Must be
+ *  dereferencible.
+ * @return true if successful.
+ */
+bool av_stream_context(struct AVFormatContext* const fc, unsigned streamIndex,
+                       struct AVCodecContext** const cc);
+
+/**
  * Must be initialised with \ref Media_init and destroyed by \red Media_destroy
  * @brief Media represents a collection of playable audio/video streams.
  */
@@ -52,10 +66,15 @@ struct Media
 	int pictQueueSize, pictQueueIndexR, pictQueueIndexW;
 	SDL_mutex* pictQueueMutex;
 	SDL_cond* pictQueueCond;
+
+	double timer;
+	double clockAudio;
+	double clockVideo;
+	double lastFrameDelay;
+	double lastFrameTimestamp;
+
 	SDL_Window* screen;
 	SDL_Renderer* renderer;
-
-
 	SDL_Thread* threadParse;
 	SDL_Thread* threadAudio;
 	SDL_Thread* threadVideo;
@@ -83,19 +102,15 @@ bool Media_pictQueue_init(struct Media* const);
  */
 void Media_pictQueue_destroy(struct Media* const);
 
-bool Media_pictQueue_wait_write(struct Media* const);
 /**
- * @brief Extracts and copies codec context of given stream. Guarenteed to
- *  clean up upon failure.
- * @param[in] fc An opened AVFormatContext that has stream info. That is,
- *  avformat_find_stream_info(fc, NULL) >= 0
- * @param[in] streamIndex Index of the stream in the format context. Must be
- *  less than fc->nb_streams
- * @param[out] cc Output to store the copied AVCodecContext. Must be
- *  dereferencible.
- * @return true if successful.
+ * @brief Wait for the writing position in media->pictQueue to be available.
+ * @return false if media->state is set to quit
  */
-bool av_stream_context(struct AVFormatContext* const fc, unsigned streamIndex,
-                       struct AVCodecContext** const cc);
+bool Media_pictQueue_wait_write(struct Media* const);
 
+// Synchronisation functions
+
+double Media_synchronise_video(struct Media* const, AVFrame* const,
+                               double pts);
+double Media_get_audio_clock(struct Media const* const);
 #endif // !CHALCOCITE__MEDIA_H_

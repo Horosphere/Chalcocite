@@ -1,7 +1,36 @@
 #include "media.h"
 
 #include <assert.h>
+
 #include <SDL2/SDL_thread.h>
+#include <libavutil/time.h>
+
+bool av_stream_context(struct AVFormatContext* const fc, unsigned streamIndex,
+                       struct AVCodecContext** const cc)
+{
+	assert(streamIndex < fc->nb_streams);
+
+	AVCodec* codec = avcodec_find_decoder(fc->streams[streamIndex]->codec->codec_id);
+	if (!codec)
+	{
+		fprintf(stderr, "Unsupported codec\n");
+		return false;
+	}
+	*cc = avcodec_alloc_context3(codec);
+	if (avcodec_copy_context(*cc, fc->streams[streamIndex]->codec))
+	{
+		fprintf(stderr, "Could not copy codec context\n");
+		avcodec_free_context(cc);
+		return false;
+	}
+	if (avcodec_open2(*cc, codec, NULL) < 0)
+	{
+		fprintf(stderr, "Unsupported codec\n");
+		avcodec_free_context(cc);
+		return false;
+	}
+	return true;
+}
 
 void Media_init(struct Media* const media)
 {
@@ -78,30 +107,24 @@ bool Media_pictQueue_wait_write(struct Media* const media)
 	if (media->state == STATE_QUIT) return false;
 	return true;
 }
-
-bool av_stream_context(struct AVFormatContext* const fc, unsigned streamIndex,
-                       struct AVCodecContext** const cc)
+double Media_synchronise_video(struct Media* const media, AVFrame* const frame,
+		double pts)
 {
-	assert(streamIndex < fc->nb_streams);
+	double frameDelay;
+	if (pts != 0.0)
+		media->clockVideo = pts;
+	else
+		pts = media->clockVideo;
+	frameDelay = av_q2d(media->streamV->codec->time_base);
+	frameDelay += frame->repeat_pict * (frameDelay * 0.5);
+	media->clockVideo += frameDelay;
 
-	AVCodec* codec = avcodec_find_decoder(fc->streams[streamIndex]->codec->codec_id);
-	if (!codec)
-	{
-		fprintf(stderr, "Unsupported codec\n");
-		return false;
-	}
-	*cc = avcodec_alloc_context3(codec);
-	if (avcodec_copy_context(*cc, fc->streams[streamIndex]->codec))
-	{
-		fprintf(stderr, "Could not copy codec context\n");
-		avcodec_free_context(cc);
-		return false;
-	}
-	if (avcodec_open2(*cc, codec, NULL) < 0)
-	{
-		fprintf(stderr, "Unsupported codec\n");
-		avcodec_free_context(cc);
-		return false;
-	}
-	return true;
+	return pts;
+}
+
+double Media_get_audio_clock(struct Media const* const media)
+{
+	double pts = media->clockAudio;
+
+	return pts;
 }

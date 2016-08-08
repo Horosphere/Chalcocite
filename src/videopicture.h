@@ -17,6 +17,7 @@ struct VideoPicture
 	uint8_t* planeY;
 	uint8_t* planeU;
 	uint8_t* planeV;
+	double timestamp;
 };
 
 SDL_mutex* screenMutex;
