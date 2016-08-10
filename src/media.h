@@ -16,6 +16,11 @@
 #define PICTQUEUE_SIZE 1
 
 /**
+ * @brief Opens a AVFormatContext from the given fileName.
+ * @return NULL if failed.
+ */
+struct AVFormatContext* av_open_file(char const* fileName);
+/**
  * @brief Extracts and copies codec context of given stream. Guarenteed to
  *  clean up upon failure.
  * @param[in] fc An opened AVFormatContext that has stream info. That is,
@@ -37,20 +42,20 @@ struct Media
 {
 	char fileName[1024]; ///< Path to the media file
 	_Atomic enum State state; ///< Playback state
-	AVFormatContext* formatContext;
+	struct AVFormatContext* formatContext;
 
 	unsigned streamIndexA;
-	AVStream* streamA; ///< streamA is NULL if no audio
-	AVCodecContext* ccA; ///< Audio codec context
+	struct AVStream* streamA; ///< streamA is NULL if no audio
+	struct AVCodecContext* ccA; ///< Audio codec context
 	PacketQueue queueA; ///< Packet queue to store audio packets.
 
-	SDL_AudioSpec audioSpec;
+	struct SDL_AudioSpec audioSpec;
 	struct SwrContext* swrContext; ///< Converts audio to SDL playable format
 	SDL_AudioDeviceID audioDevice;
 
 	unsigned streamIndexV;
-	AVStream* streamV; // = NULL if no video
-	AVCodecContext* ccV; ///< Video codec context
+	struct AVStream* streamV; // = NULL if no video
+	struct AVCodecContext* ccV; ///< Video codec context
 	PacketQueue queueV;
 
 	struct SwsContext* swsContext; ///< Converts video to SDL playable format
@@ -67,6 +72,9 @@ struct Media
 	SDL_mutex* pictQueueMutex;
 	SDL_cond* pictQueueCond;
 
+	/*
+	 * All synchronisation variables are in second
+	 */
 	double timer;
 	double clockAudio;
 	double clockVideo;
@@ -80,8 +88,8 @@ struct Media
 	SDL_Thread* threadVideo;
 
 	// Cache
-	AVFrame* frameVideo;
-	AVFrame* frameAudio;
+	struct AVFrame* frameVideo;
+	struct AVFrame* frameAudio;
 
 };
 
@@ -108,9 +116,17 @@ void Media_pictQueue_destroy(struct Media* const);
  */
 bool Media_pictQueue_wait_write(struct Media* const);
 
-// Synchronisation functions
+/**
+ * @brief Fills ccA/V, streamIndexA/V, streamA/V with appropriate values.
+ * @return false if no audio and no video streams are found.
+ */
+bool Media_open_best_streams(struct Media* const);
+/**
+ * @brief Closes all codec contextes but not format context.
+ */
+void Media_close(struct Media* const);
 
-double Media_synchronise_video(struct Media* const, AVFrame* const,
+double Media_synchronise_video(struct Media* const, struct AVFrame* const,
                                double pts);
 double Media_get_audio_clock(struct Media const* const);
 #endif // !CHALCOCITE__MEDIA_H_

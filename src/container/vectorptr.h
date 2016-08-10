@@ -17,6 +17,7 @@ typedef struct
 void VectorPtr_init(VectorPtr* const);
 void VectorPtr_destroy(VectorPtr* const);
 
+void VectorPtr_clear(VectorPtr* const);
 size_t VectorPtr_size(VectorPtr* const);
 void* VectorPtr_at(VectorPtr* const, size_t index);
 bool VectorPtr_push_back(VectorPtr* const, void*);

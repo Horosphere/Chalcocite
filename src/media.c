@@ -5,6 +5,22 @@
 #include <SDL2/SDL_thread.h>
 #include <libavutil/time.h>
 
+struct AVFormatContext* av_open_file(char const* fileName)
+{
+	struct AVFormatContext* fc = NULL;
+	if (avformat_open_input(&fc, fileName, NULL, NULL))
+	{
+		fprintf(stderr, "Unable to open file\n");
+		return NULL;
+	}
+	if (avformat_find_stream_info(fc, NULL) < 0)
+	{
+		fprintf(stderr, "Unable to find streams within media\n");
+		avformat_close_input(&fc);
+		return NULL;
+	}
+	return fc;
+}
 bool av_stream_context(struct AVFormatContext* const fc, unsigned streamIndex,
                        struct AVCodecContext** const cc)
 {
@@ -107,8 +123,39 @@ bool Media_pictQueue_wait_write(struct Media* const media)
 	if (media->state == STATE_QUIT) return false;
 	return true;
 }
-double Media_synchronise_video(struct Media* const media, AVFrame* const frame,
-		double pts)
+
+bool Media_open_best_streams(struct Media* const media)
+{
+	// Audio stream
+	for (unsigned i = 0; i < media->formatContext->nb_streams; ++i)
+		if (media->formatContext->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO)
+		{
+			if (!av_stream_context(media->formatContext, i, &media->ccA)) break;
+			media->streamIndexA = i;
+			media->streamA = media->formatContext->streams[i];
+			break;
+		}
+	for (unsigned i = 0; i < media->formatContext->nb_streams; ++i)
+		if (media->formatContext->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO)
+		{
+			if (!av_stream_context(media->formatContext, i, &media->ccV)) break;
+
+			// TODO: Allow the window to be resized
+			media->streamIndexV = i;
+			media->streamV = media->formatContext->streams[i];
+			break;
+		}
+	return media->ccA || media->ccV;
+}
+void Media_close(struct Media* const media)
+{
+	avcodec_close(media->ccA);
+	avcodec_close(media->ccV);
+}
+// Synchronisation
+double Media_synchronise_video(struct Media* const media,
+                               struct AVFrame* const frame,
+                               double pts)
 {
 	double frameDelay;
 	if (pts != 0.0)
